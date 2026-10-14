@@ -1,6 +1,10 @@
 [build]
   publish = "public"
 
+[build.environment]
+  # 교사 비밀번호는 서버 코드가 process.env로만 읽습니다. 짧은 값이 다른 글자와 겹쳐 오탐되는 것을 막기 위한 설정입니다.
+  SECRETS_SCAN_OMIT_KEYS = "TEACHER_PIN"
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"

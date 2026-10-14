@@ -7,7 +7,7 @@
 2. **GitHub**에 이 폴더 전체를 올리고, **Netlify**에서 *Import from Git*으로 연결합니다. (빌드 명령은 비워 두면 됩니다.)
 3. Netlify → Site configuration → Environment variables 에 아래 두 개를 추가한 뒤 다시 배포합니다.
    - `DATABASE_URL` : Neon 연결 문자열
-   - `TEACHER_PIN` : 교사 화면 비밀번호 (없으면 `1234`)
+   - `TEACHER_PIN` : 교사 화면 비밀번호 (필수). 코드 어디에도 없는 값으로 정하세요. 너무 흔하거나 짧은 숫자는 Netlify 보안 검사에 걸릴 수 있어요.
 
 ## 수업 진행 (20분)
 | 시간 | 내용 |

@@ -340,7 +340,7 @@ function renderLoginBody() {
     $('#loginBody').innerHTML = `
       <label class="f" for="loginPin">교사 비밀번호</label>
       <input id="loginPin" type="password" autocomplete="current-password" placeholder="비밀번호">
-      <p class="hint">처음 설치했다면 기본 비밀번호는 1234예요. Netlify 환경변수 TEACHER_PIN으로 바꿀 수 있어요.</p>
+      <p class="hint">Netlify 환경변수 TEACHER_PIN에 정해 둔 비밀번호를 입력해요.</p>
       <p style="margin-top:14px"><button class="btn sea big" data-act="login" style="width:100%">교사 화면 열기</button></p>`;
   }
 }

@@ -1,5 +1,5 @@
 // 무역 항구 게임 — Netlify Function (v2) + Neon Postgres
-// 환경변수: DATABASE_URL (Neon 연결 문자열), TEACHER_PIN (교사 비밀번호, 없으면 1234)
+// 환경변수: DATABASE_URL (Neon 연결 문자열), TEACHER_PIN (교사 비밀번호, 필수)
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
 import { randomInt } from 'node:crypto';
@@ -160,11 +160,15 @@ async function ensureSchema(client) {
 }
 
 /* ================= 인증 ================= */
-const teacherPin = () => process.env.TEACHER_PIN || '1234';
+const teacherPin = () => process.env.TEACHER_PIN || '';
+function checkPin(p) {
+  if (!teacherPin()) fail(500, 'Netlify 환경변수 TEACHER_PIN(교사 비밀번호)이 설정되지 않았어요.');
+  return p === teacherPin();
+}
 function requireTeacher(req) {
   let p = req.headers.get('x-teacher-pin') || '';
   try { p = decodeURIComponent(p); } catch { /* 그대로 사용 */ }
-  if (p !== teacherPin()) fail(401, '교사 비밀번호가 맞지 않아요.');
+  if (!checkPin(p)) fail(401, '교사 비밀번호가 맞지 않아요.');
 }
 async function authGroup(client, req) {
   const gid = Number(req.headers.get('x-group'));
@@ -541,7 +545,7 @@ async function teacherAction(client, action, b) {
 /* ================= 로그인 & 라우팅 ================= */
 async function login(client, b) {
   if (b.pin !== undefined) {
-    if (String(b.pin) !== teacherPin()) fail(401, '교사 비밀번호가 맞지 않아요.');
+    if (!checkPin(String(b.pin))) fail(401, '교사 비밀번호가 맞지 않아요.');
     return json({ ok: true, role: 'teacher' });
   }
   const gid = Number(b.group);
