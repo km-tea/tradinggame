@@ -1,0 +1,11 @@
+{
+  "name": "trade-game",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "모둠별 무역 게임 (Netlify + Neon)",
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "ws": "^8.18.0"
+  }
+}

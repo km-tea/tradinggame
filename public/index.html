@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>무역 항구 게임</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#14213d; --sea:#0d5c8f; --foam:#e4f1f5; --sand:#fff1c9; --paper:#fffdf5;
+  --ok:#1f9d63; --warn:#e63946; --gold:#ffb703; --mute:#5b6b85;
+  --display:'Jua','Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif;
+  --body:'Pretendard','Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{font-size:17px}
+body{margin:0;color:var(--ink);font-family:var(--body);line-height:1.5;background-color:var(--foam);
+  background-image:repeating-linear-gradient(180deg,transparent 0 46px,rgba(13,92,143,.07) 46px 48px);
+  -webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--display);font-weight:400;margin:0 0 .35em;line-height:1.25}
+h3{font-size:1.3rem} h4{font-size:1.1rem}
+p{margin:.3em 0}
+small,.small{font-size:.82rem;color:var(--mute)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+
+/* ---------- 공통 부품 ---------- */
+.card{background:#fff;border:3px solid var(--ink);border-radius:16px;box-shadow:0 5px 0 var(--ink);padding:16px;margin:16px 0}
+.btn{font-family:var(--display);font-size:1.1rem;border:3px solid var(--ink);border-radius:12px;background:var(--gold);
+  padding:.55em 1.1em;box-shadow:0 4px 0 var(--ink);cursor:pointer;transition:transform .06s}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+.btn.go{background:#5fd49a} .btn.no{background:#fff} .btn.sea{background:#7cc4ee} .btn.big{font-size:1.3rem;padding:.6em 1.4em}
+.btn.sm{font-size:.95rem;padding:.3em .8em;box-shadow:0 3px 0 var(--ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:0 1px 0 var(--ink);transform:translateY(3px)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.flag{--c:#888;display:inline-grid;place-items:center;min-width:34px;height:26px;padding:0 6px 0 4px;background:var(--c);color:#fff;
+  font-family:var(--display);font-size:.95rem;clip-path:polygon(0 0,100% 0,84% 50%,100% 100%,0 100%);vertical-align:middle;text-shadow:0 1px 0 rgba(0,0,0,.35)}
+.flag.lg{min-width:52px;height:38px;font-size:1.3rem}
+.item{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.item .em{font-size:1.15em}
+.chip{display:inline-flex;align-items:center;gap:4px;border:2px solid var(--ink);border-radius:999px;padding:1px 10px;background:#fff;font-size:.9rem;white-space:nowrap}
+.chip.ok{background:#d6f5e4} .chip.lack{background:#ffe1e3;border-style:dashed}
+.pill{display:inline-block;border:2px solid #fff;border-radius:999px;padding:1px 12px;font-size:.9rem;background:rgba(255,255,255,.14)}
+.bar{height:16px;border:2px solid var(--ink);border-radius:999px;background:#fff;overflow:hidden;min-width:60px}
+.bar>i{display:block;height:100%;background:var(--sea);border-right:2px solid var(--ink)}
+.bar.trade>i{background:#2fbf71} .bar.zero>i{border:0}
+.muted{color:var(--mute)}
+.quote{margin:8px 0 0;padding:8px 12px;border-left:6px solid var(--c,#14213d);background:#f4f6fa;border-radius:4px 10px 10px 4px;white-space:pre-wrap;word-break:break-word}
+.quote.reply{background:#e8f7ee;--c:#1f9d63}
+label.f{display:block;margin:10px 0 4px;font-weight:700}
+textarea,select,input[type=text],input[type=password],input[type=number],input[type=tel]{
+  width:100%;border:3px solid var(--ink);border-radius:10px;padding:8px 10px;background:#fff}
+textarea{resize:vertical;min-height:84px}
+.hint{font-size:.85rem;color:var(--mute);margin-top:4px}
+
+/* ---------- 로그인 ---------- */
+.login{max-width:520px;margin:0 auto;padding:28px 16px 60px}
+.hero{text-align:center;margin-bottom:8px}
+.bunting{display:flex;justify-content:center;gap:6px;margin-bottom:10px}
+.bunting .flag{min-width:44px;height:34px;transform-origin:top center}
+.hero h1{font-size:3rem;margin:.1em 0}
+.hero p{color:#2c3d5e}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:3px solid var(--ink);border-radius:12px;overflow:hidden;margin-bottom:14px}
+.seg button{border:0;background:#fff;padding:.6em;font-family:var(--display);font-size:1.1rem;cursor:pointer}
+.seg button.on{background:var(--ink);color:#fff}
+.gpick{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.gpick button{border:3px solid var(--ink);border-radius:12px;background:#fff;padding:10px 4px;cursor:pointer;display:grid;gap:4px;justify-items:center;font-family:var(--display)}
+.gpick button.on{background:var(--sand);box-shadow:0 4px 0 var(--ink);transform:translateY(-2px)}
+
+/* ---------- 모둠 화면 틀 ---------- */
+.shell{max-width:980px;margin:0 auto;padding:0 14px 110px}
+.topbar{position:sticky;top:0;z-index:20;margin:0 -14px;background:var(--ink);color:#fff;display:flex;align-items:center;gap:12px;padding:10px 14px;flex-wrap:wrap}
+.topbar .ttl{font-family:var(--display);font-size:1.35rem;line-height:1.1}
+.topbar .ttl small{display:block;color:#b9c6e0;font-family:var(--body)}
+.topbar .sp{flex:1}
+.timer{font-family:var(--display);font-size:1.7rem;font-variant-numeric:tabular-nums;min-width:4.2ch;text-align:center}
+.timer.low{color:#ffd166} .timer.zero{color:#ff6b6b}
+.score{background:var(--gold);color:var(--ink);border-radius:12px;padding:2px 14px;font-family:var(--display);font-size:1.4rem;border:3px solid #fff}
+.score small{color:var(--ink);font-family:var(--body);margin-left:2px}
+.offline{background:#ff6b6b;color:#fff;border-radius:8px;padding:0 8px;font-size:.8rem}
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(4,1fr);background:#fff;border-top:3px solid var(--ink)}
+.nav button{position:relative;border:0;background:#fff;padding:8px 2px 10px;cursor:pointer;font-family:var(--display);font-size:1rem;display:grid;gap:0;justify-items:center}
+.nav button .e{font-size:1.5rem;line-height:1.2}
+.nav button.on{background:var(--gold)}
+.nav .badge{position:absolute;top:4px;left:calc(50% + 10px);background:var(--warn);color:#fff;border-radius:999px;min-width:22px;height:22px;display:grid;place-items:center;font-size:.8rem;border:2px solid #fff}
+
+.banner{border:3px solid var(--ink);border-radius:14px;padding:12px 16px;margin:16px 0;background:var(--sand);font-family:var(--display);font-size:1.15rem}
+.banner.stop{background:#ffe1e3} .banner.go{background:#d6f5e4}
+.banner small{display:block;font-family:var(--body);color:#33425f;margin-top:2px}
+
+.inv{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:10px}
+.tile{border:3px solid var(--ink);border-radius:12px;padding:8px 6px;text-align:center;background:#fff;position:relative}
+.tile.own{background:var(--sand)}
+.tile .em{font-size:1.8rem;line-height:1.1;display:block}
+.tile .nm{font-size:.9rem}
+.tile .n{font-family:var(--display);font-size:1.7rem;line-height:1.1}
+.tile .tag{position:absolute;top:-10px;right:-6px;background:var(--ink);color:#fff;border-radius:8px;font-size:.7rem;padding:0 6px}
+.lvhead{display:flex;align-items:baseline;gap:8px;margin:20px 0 8px}
+.lvhead .pts{font-family:var(--display);font-size:1.1rem;background:var(--ink);color:#fff;border-radius:8px;padding:0 10px}
+.recipes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.recipe{--lc:#4aa3d8;background:#fff;border:3px solid var(--ink);border-left:14px solid var(--lc);border-radius:14px;padding:12px;display:grid;gap:8px;box-shadow:0 4px 0 var(--ink)}
+.recipe.lv2{--lc:#f59e0b} .recipe.lv3{--lc:#e63946}
+.recipe .top{display:flex;gap:10px;align-items:center}
+.recipe .big{font-size:2.2rem;line-height:1}
+.recipe .ings{display:flex;flex-wrap:wrap;gap:6px}
+
+/* ---------- 편지(무역 제안) ---------- */
+.letter{--c:#888;position:relative;background:var(--paper);border:3px solid var(--ink);border-radius:6px;padding:20px 16px 14px;margin:18px 0;box-shadow:0 5px 0 var(--ink)}
+.letter::before{content:'';position:absolute;left:-3px;right:-3px;top:-3px;height:9px;
+  background:repeating-linear-gradient(135deg,#e63946 0 14px,var(--paper) 14px 22px,#2563eb 22px 36px,var(--paper) 36px 44px);border:3px solid var(--ink);border-radius:6px 6px 0 0}
+.letter .stamp{position:absolute;right:12px;top:18px}
+.deal{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+.deal .swap{font-size:1.3rem}
+.deal .side{border:2px dashed var(--ink);border-radius:10px;padding:2px 10px;background:#fff}
+.deal .side small{display:block;line-height:1.1}
+.pick{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.pickbtn{--c:#888;border:3px solid var(--ink);border-radius:12px;background:#fff;padding:6px 8px;cursor:pointer;display:flex;gap:8px;align-items:center;text-align:left;font-family:var(--display)}
+.pickbtn small{display:block;font-family:var(--body);line-height:1.1}
+.pickbtn.on{background:var(--sand);box-shadow:0 4px 0 var(--ink);transform:translateY(-2px)}
+.two{display:grid;grid-template-columns:1fr 110px;gap:8px}
+.example{background:#eef6ff;border:2px dashed #2563eb;border-radius:10px;padding:8px 12px;font-size:.9rem;margin:8px 0}
+.cnt{font-size:.85rem;color:var(--mute);text-align:right}
+.cnt.ok{color:var(--ok);font-weight:700}
+.mail{--c:#888;background:#fff;border:3px solid var(--ink);border-radius:12px;padding:10px 12px;margin:10px 0}
+.mail.accepted{background:#effaf3} .mail.rejected,.mail.cancelled{background:#fbf0f1}
+.mail header{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.mail header b{font-family:var(--display);font-weight:400;margin-left:auto}
+.feed{margin:6px 0;padding:6px 10px;border-bottom:2px dotted #b4c0d4;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+
+/* ---------- 미션·순위 ---------- */
+.mission{background:var(--sand);text-align:center;padding:22px 16px;position:relative}
+.mission .me{font-size:3.4rem;line-height:1}
+.mission h3{font-size:1.8rem;margin-top:6px}
+.mission .bonus{display:inline-block;background:var(--ink);color:#fff;border-radius:10px;padding:0 12px;font-family:var(--display);font-size:1.2rem}
+.mission .done{position:absolute;right:14px;top:14px;transform:rotate(8deg);border:4px solid var(--ok);color:var(--ok);border-radius:12px;padding:0 12px;font-family:var(--display);font-size:1.5rem;background:#fff}
+.rank{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.rank li{display:grid;grid-template-columns:34px auto 1fr auto;gap:10px;align-items:center;padding:6px 8px;border:3px solid var(--ink);border-radius:12px;background:#fff}
+.rank li.me{background:var(--sand)}
+.rank .no{font-family:var(--display);font-size:1.4rem;text-align:center}
+.rank b{font-family:var(--display);font-weight:400;font-size:1.2rem}
+.cmp{display:grid;grid-template-columns:130px 1fr 70px;gap:10px;align-items:center;margin:8px 0}
+.cmp b{font-family:var(--display);font-weight:400;font-size:1.2rem;text-align:right}
+.final{background:var(--sand);text-align:center}
+.final .big{font-family:var(--display);font-size:2.2rem}
+
+/* ---------- 알림 ---------- */
+#toasts{position:fixed;left:0;right:0;top:78px;z-index:99;display:grid;justify-items:center;gap:8px;pointer-events:none;padding:0 12px}
+.toast{background:var(--ink);color:#fff;border-radius:12px;padding:10px 18px;font-family:var(--display);font-size:1.05rem;border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.3);animation:pop .22s ease-out}
+.toast.ok{background:#12794a} .toast.warn{background:#b3202c} .toast.mail{background:#1d4ed8}
+@keyframes pop{from{transform:translateY(-10px) scale(.96);opacity:0}to{transform:none;opacity:1}}
+
+/* ---------- 교사 화면 ---------- */
+.tshell{max-width:1240px;margin:0 auto;padding:0 14px 60px}
+.thead{background:var(--ink);color:#fff;margin:0 -14px;padding:12px 18px;display:flex;flex-wrap:wrap;gap:14px;align-items:center;position:sticky;top:0;z-index:20}
+.thead .timer{font-size:3rem}
+.thead h2{margin:0;font-size:1.5rem}
+.thead .ph{font-family:var(--display);font-size:1.4rem}
+.thead .sp{flex:1}
+.settings{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+.settings label{display:grid;gap:2px;font-size:.85rem;color:#d5def0}
+.settings input{width:90px;color:var(--ink)}
+.tgrid{display:grid;grid-template-columns:minmax(0,2fr) minmax(300px,1fr);gap:18px;align-items:start}
+@media (max-width:980px){.tgrid{grid-template-columns:1fr}}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:720px}
+th,td{border-bottom:2px solid #d3dbea;padding:8px 6px;text-align:left;vertical-align:middle}
+th{font-family:var(--display);font-weight:400;font-size:.95rem;color:var(--mute)}
+td.pts{font-family:var(--display);font-size:1.5rem;text-align:right}
+td.rk{font-family:var(--display);font-size:1.3rem;text-align:center}
+.codes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.code{border:3px solid var(--ink);border-radius:12px;padding:8px 10px;background:#fff}
+.code .cd{font-family:var(--display);font-size:2rem;letter-spacing:.12em}
+
+@media (max-width:640px){
+  html{font-size:16px}
+  .hero h1{font-size:2.4rem}
+  .cmp{grid-template-columns:96px 1fr 58px}
+  .two{grid-template-columns:1fr 92px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app"><p style="text-align:center;padding:60px 0">불러오는 중…</p></div>
+<div id="toasts" aria-live="polite"></div>
+<noscript>이 앱은 자바스크립트가 필요해요.</noscript>
+
+<script>
+/* =====================================================================
+   무역 항구 게임 — 프론트엔드 (모둠 화면 + 교사 화면)
+   ===================================================================== */
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const GCOL = ['#e63946', '#2563eb', '#f472b6', '#16a34a', '#7c3aed', '#f59e0b'];
+const gcol = (id) => GCOL[(id - 1) % 6];
+const PHASE = {
+  lobby: '⏳ 시작 전', autarky: '🚫 자급자족 시간', trade: '🤝 무역 시간', finished: '🏁 게임 끝',
+};
+const STATUS = { pending: '⏳ 기다리는 중', accepted: '✅ 무역 성공', rejected: '❌ 거절됨', cancelled: '🚫 취소됨' };
+
+const S = {
+  session: null, st: null, cfg: null, skew: 0, offline: false,
+  tab: 'craft', drafts: {}, sigs: {}, shell: null, seen: null, busy: false,
+  loginRole: 'group', loginGroup: null, pollT: null,
+};
+try { S.session = JSON.parse(localStorage.getItem('tg_session') || 'null'); } catch { S.session = null; }
+const saveSession = () => {
+  try { S.session ? localStorage.setItem('tg_session', JSON.stringify(S.session)) : localStorage.removeItem('tg_session'); } catch {}
+};
+
+/* ---------- 통신 ---------- */
+async function api(path, { method = 'GET', body } = {}) {
+  const h = { 'content-type': 'application/json' };
+  const s = S.session;
+  if (s?.role === 'teacher') h['x-teacher-pin'] = encodeURIComponent(s.pin);
+  if (s?.role === 'group') { h['x-group'] = String(s.group); h['x-code'] = String(s.code); }
+  const r = await fetch('/api/' + path, { method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
+  let data = null;
+  try { data = await r.json(); } catch {}
+  if (!r.ok) { const e = new Error(data?.error || '요청에 실패했어요.'); e.status = r.status; throw e; }
+  return data;
+}
+
+/* ---------- 화면 조각 갱신 도구 (입력 중인 글이 지워지지 않게) ---------- */
+function mount(id, sig, html, post) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const s = typeof sig === 'string' ? sig : JSON.stringify(sig);
+  if (S.sigs[id] === s) return;
+  S.sigs[id] = s;
+  const act = document.activeElement;
+  const keep = act && act.id && el.contains(act) ? { id: act.id, a: act.selectionStart, b: act.selectionEnd } : null;
+  el.innerHTML = typeof html === 'function' ? html() : html;
+  el.querySelectorAll('[data-draft]').forEach((n) => {
+    const v = S.drafts[n.dataset.draft];
+    if (v !== undefined) n.value = v;
+  });
+  if (keep) {
+    const n = document.getElementById(keep.id);
+    if (n) { n.focus(); try { n.setSelectionRange(keep.a, keep.b); } catch {} }
+  }
+  if (post) post();
+}
+document.addEventListener('input', (e) => {
+  const t = e.target;
+  if (t.dataset && t.dataset.draft) S.drafts[t.dataset.draft] = t.value;
+  if (t.id === 'msg') updateCount();
+});
+document.addEventListener('change', (e) => {
+  const t = e.target;
+  if (t.dataset && t.dataset.draft) S.drafts[t.dataset.draft] = t.value;
+});
+
+function toast(msg, kind = '') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  el.textContent = msg;
+  $('#toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3800);
+}
+
+/* ---------- 공통 표현 ---------- */
+const raw = (k) => S.cfg.raw[k];
+const flagEl = (id, lg) => `<span class="flag${lg ? ' lg' : ''}" style="--c:${gcol(id)}">${id}</span>`;
+const itemQty = (k, n) => `<span class="item"><span class="em">${raw(k).emoji}</span>${esc(raw(k).name)}${n != null ? ` <b>${n}개</b>` : ''}</span>`;
+const pts = (p) => S.cfg.levels[p.level].points;
+const fmtTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+function invTiles(inv, own) {
+  return `<div class="inv">${Object.keys(S.cfg.raw).map((k) => `
+    <div class="tile ${k === own ? 'own' : ''}">
+      ${k === own ? '<span class="tag">우리 특산품</span>' : ''}
+      <span class="em">${raw(k).emoji}</span><span class="nm">${esc(raw(k).name)}</span>
+      <span class="n">${inv[k] ?? 0}</span>
+    </div>`).join('')}</div>`;
+}
+
+function dealHTML(t) {
+  // 제안을 받은 모둠의 시점: 상대가 주는 것을 받고, 우리가 가진 것을 준다
+  return `<div class="deal">
+    <span class="side"><small>📥 우리가 받아요</small>${itemQty(t.giveItem, t.giveQty)}</span><span class="swap">⇄</span>
+    <span class="side"><small>📤 우리가 줘요</small>${itemQty(t.wantItem, t.wantQty)}</span></div>`;
+}
+
+function compareHTML(c) {
+  const max = Math.max(c.autarky, c.trade, 1);
+  const w = (n) => Math.max(n > 0 ? 3 : 0, Math.round((n / max) * 100));
+  const text = c.autarky === 0
+    ? `자급자족만 할 때는 아무도 물품을 만들지 못했어요. 무역을 열자 반 전체가 <b>${c.trade}점</b>을 만들었어요.`
+    : `자급자족 때 ${c.autarky}점이던 물품 점수가 무역을 한 뒤 ${c.trade}점이 됐어요.`;
+  return `<section class="card"><h3>무역을 하기 전과 후</h3>
+    <div class="cmp"><span>🚫 자급자족</span><div class="bar ${c.autarky ? '' : 'zero'}"><i style="width:${w(c.autarky)}%"></i></div><b>${c.autarky}점</b></div>
+    <div class="cmp"><span>🤝 무역 시간</span><div class="bar trade ${c.trade ? '' : 'zero'}"><i style="width:${w(c.trade)}%"></i></div><b>${c.trade}점</b></div>
+    <p>${text}</p><p class="small">6개 모둠이 만든 물품 점수를 모두 더한 값이에요. 미션 보너스는 뺐어요.</p></section>`;
+}
+
+function mailHTML(t, extra) {
+  return `<article class="mail ${t.status}" style="--c:${gcol(t.from)}">
+    <header>${flagEl(t.from)}<span>→</span>${flagEl(t.to)}<b>${STATUS[t.status]}</b></header>
+    <div class="deal"><span class="side">${itemQty(t.giveItem, t.giveQty)}</span><span class="swap">⇄</span><span class="side">${itemQty(t.wantItem, t.wantQty)}</span></div>
+    <blockquote class="quote" style="--c:${gcol(t.from)}">${esc(t.message)}</blockquote>
+    ${t.reply ? `<blockquote class="quote reply">${esc(t.reply)}</blockquote>` : ''}
+    ${extra || ''}</article>`;
+}
+
+/* =====================================================================
+   로그인
+   ===================================================================== */
+function renderLogin() {
+  S.shell = 'login'; S.sigs = {};
+  $('#app').innerHTML = `<div class="login">
+    <div class="hero">
+      <div class="bunting">${[1, 2, 3, 4, 5, 6].map((i) => `<span class="flag" style="--c:${gcol(i)}">${i}</span>`).join('')}</div>
+      <h1>무역 항구</h1>
+      <p>우리 모둠에게는 재료가 한 가지뿐이에요.<br>다른 모둠에게 편지를 써서 거래하고 물품을 완성해 보세요.</p>
+    </div>
+    <div class="card">
+      <div class="seg" id="seg">
+        <button data-act="role" data-r="group">모둠 입장</button>
+        <button data-act="role" data-r="teacher">교사</button>
+      </div>
+      <div id="loginBody"></div>
+    </div></div>`;
+  renderLoginBody();
+}
+function renderLoginBody() {
+  document.querySelectorAll('#seg button').forEach((b) => b.classList.toggle('on', b.dataset.r === S.loginRole));
+  if (S.loginRole === 'group') {
+    $('#loginBody').innerHTML = `
+      <label class="f">우리 모둠을 골라요</label>
+      <div class="gpick">${[1, 2, 3, 4, 5, 6].map((i) => `
+        <button type="button" data-act="pick-login" data-g="${i}" class="${S.loginGroup === i ? 'on' : ''}">${flagEl(i, true)}<span>${i}모둠</span></button>`).join('')}</div>
+      <label class="f" for="loginCode">입장 코드 (선생님이 알려 줘요)</label>
+      <input id="loginCode" type="tel" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="숫자 4자리">
+      <p style="margin-top:14px"><button class="btn go big" data-act="login" style="width:100%">입장하기</button></p>`;
+  } else {
+    $('#loginBody').innerHTML = `
+      <label class="f" for="loginPin">교사 비밀번호</label>
+      <input id="loginPin" type="password" autocomplete="current-password" placeholder="비밀번호">
+      <p class="hint">처음 설치했다면 기본 비밀번호는 1234예요. Netlify 환경변수 TEACHER_PIN으로 바꿀 수 있어요.</p>
+      <p style="margin-top:14px"><button class="btn sea big" data-act="login" style="width:100%">교사 화면 열기</button></p>`;
+  }
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.target.id === 'loginCode' || e.target.id === 'loginPin')) doLogin();
+});
+async function doLogin() {
+  if (S.loginRole === 'group') {
+    const code = ($('#loginCode')?.value || '').trim();
+    if (!S.loginGroup) return toast('모둠을 골라 주세요.', 'warn');
+    if (!code) return toast('입장 코드를 써 주세요.', 'warn');
+    await api('login', { method: 'POST', body: { group: S.loginGroup, code } });
+    S.session = { role: 'group', group: S.loginGroup, code };
+  } else {
+    const pin = $('#loginPin')?.value || '';
+    if (!pin) return toast('비밀번호를 써 주세요.', 'warn');
+    await api('login', { method: 'POST', body: { pin } });
+    S.session = { role: 'teacher', pin };
+  }
+  saveSession();
+  startApp();
+}
+function logout(auto) {
+  S.session = null; saveSession(); S.st = null; S.shell = null; S.seen = null; S.drafts = {};
+  renderLogin();
+  if (auto) toast('입장 정보가 맞지 않아서 처음 화면으로 돌아왔어요.', 'warn');
+}
+
+/* =====================================================================
+   모둠(학생) 화면
+   ===================================================================== */
+function buildStudentShell() {
+  $('#app').innerHTML = `<div class="shell">
+    <header id="hdr" class="topbar"></header>
+    <main>
+      <section id="tab-craft"><div id="craftBanner"></div><div id="craftInv"></div><div id="craftRecipes"></div></section>
+      <section id="tab-trade"><div id="trLock"></div><div id="trInv"></div><div id="trInbox"></div><div id="trForm"></div><div id="trOut"></div><div id="trFeed"></div></section>
+      <section id="tab-mission"><div id="missionCard"></div><div id="myCrafts"></div></section>
+      <section id="tab-board"><div id="final"></div><div id="board"></div></section>
+    </main>
+    <nav id="nav" class="nav"></nav></div>`;
+  S.sigs = {}; S.shell = 'student';
+}
+function showTab() {
+  ['craft', 'trade', 'mission', 'board'].forEach((t) => { const el = $('#tab-' + t); if (el) el.hidden = S.tab !== t; });
+}
+
+function notify(st) {
+  const first = !S.seen;
+  if (first) S.seen = { inc: new Set(), out: {}, bonus: 0, phase: null };
+  const sn = S.seen;
+  if (!first) {
+    st.incoming.forEach((t) => { if (!sn.inc.has(t.id)) toast(`💌 ${t.from}모둠이 무역 제안을 보냈어요!`, 'mail'); });
+    st.outgoing.forEach((t) => {
+      if (sn.out[t.id] === 'pending' && t.status === 'accepted') toast(`✅ ${t.to}모둠이 제안을 수락했어요! 창고를 확인해요.`, 'ok');
+      if (sn.out[t.id] === 'pending' && t.status === 'rejected') toast(`❌ ${t.to}모둠이 거절했어요. 답장을 읽어 보세요.`, 'warn');
+    });
+    if (st.me.bonus > sn.bonus) toast(`🎯 미션 달성! +${st.me.bonus - sn.bonus}점`, 'ok');
+    if (sn.phase !== st.game.phase) {
+      const m = { autarky: ['🚫 자급자족이 시작됐어요!', ''], trade: ['🤝 무역이 열렸어요! 재료도 새로 나왔어요.', 'ok'], finished: ['🏁 게임이 끝났어요!', ''] }[st.game.phase];
+      if (m) toast(m[0], m[1]);
+      if (st.game.phase === 'finished') S.tab = 'board';
+      if (st.game.phase === 'trade' && sn.phase === 'autarky') S.tab = 'trade';
+    }
+  }
+  sn.inc = new Set(st.incoming.map((t) => t.id));
+  sn.out = Object.fromEntries(st.outgoing.map((t) => [t.id, t.status]));
+  sn.bonus = st.me.bonus;
+  sn.phase = st.game.phase;
+}
+
+function renderStudent() {
+  const st = S.st, me = st.me, phase = st.game.phase;
+  if (S.shell !== 'student') buildStudentShell();
+  notify(st);
+  showTab();
+
+  mount('hdr', { id: me.id, total: me.total, phase, off: S.offline }, () => `
+    ${flagEl(me.id, true)}
+    <div class="ttl">${esc(me.name)}<small>${raw(me.material).emoji} ${esc(raw(me.material).name)} 특산품</small></div>
+    <span class="sp"></span>
+    ${S.offline ? '<span class="offline">연결 확인 중…</span>' : ''}
+    <div style="text-align:center"><span class="pill">${PHASE[phase]}</span><div class="timer" data-timer>--:--</div></div>
+    <div class="score">${me.total}<small>점</small></div>`);
+
+  mount('nav', { tab: S.tab, n: st.incoming.length }, () => [
+    ['craft', '🎒', '만들기'], ['trade', '🤝', '무역'], ['mission', '🎯', '미션'], ['board', '🏆', '순위'],
+  ].map(([k, e, l]) => `<button data-act="tab" data-t="${k}" class="${S.tab === k ? 'on' : ''}"><span class="e">${e}</span>${l}
+    ${k === 'trade' && st.incoming.length ? `<span class="badge">${st.incoming.length}</span>` : ''}</button>`).join(''));
+
+  /* --- 만들기 탭 --- */
+  mount('craftBanner', phase, () => ({
+    lobby: `<div class="banner">⏳ 선생님이 게임을 시작하면 재료가 나와요.<small>아래에서 어떤 물품을 만들 수 있는지 미리 살펴봐요.</small></div>`,
+    autarky: `<div class="banner stop">🚫 무역 금지! 우리 재료만으로 만들어 보세요.<small>만들 수 있는 물품이 있나요? 없다면 왜 그런지 생각해 봐요.</small></div>`,
+    trade: `<div class="banner go">🤝 무역 시간! 부족한 재료는 다른 모둠에게 편지를 써서 구해요.</div>`,
+    finished: `<div class="banner">🏁 게임이 끝났어요. 순위 탭에서 결과를 확인해요.</div>`,
+  }[phase]));
+  mount('craftInv', { inv: me.inventory }, () => `<section class="card"><h3>🎒 우리 모둠 창고</h3>${invTiles(me.inventory, me.material)}</section>`);
+  mount('craftRecipes', { inv: me.inventory, phase, crafts: me.crafts }, () => {
+    const canPlay = phase === 'autarky' || phase === 'trade';
+    return [1, 2, 3].map((lv) => {
+      const list = Object.entries(S.cfg.products).filter(([, p]) => p.level === lv);
+      return `<div class="lvhead"><h3>난이도 ${lv} · ${esc(S.cfg.levels[lv].name)}</h3><span class="pts">${S.cfg.levels[lv].points}점</span></div>
+      <div class="recipes">${list.map(([key, p]) => {
+        const ings = Object.entries(p.recipe).map(([k, n]) => {
+          const have = me.inventory[k] ?? 0;
+          return `<span class="chip ${have >= n ? 'ok' : 'lack'}">${raw(k).emoji} ${esc(raw(k).name)} ${have}/${n}</span>`;
+        }).join('');
+        const can = canPlay && Object.entries(p.recipe).every(([k, n]) => (me.inventory[k] ?? 0) >= n);
+        return `<div class="recipe lv${lv}"><div class="top"><span class="big">${p.emoji}</span>
+          <div><b>${esc(p.name)}</b><br><small>${pts(p)}점 · 지금까지 ${me.crafts[key] || 0}개 만듦</small></div></div>
+          <div class="ings">${ings}</div>
+          <button class="btn go" data-act="craft" data-p="${key}" ${can ? '' : 'disabled'}>${can ? '만들기' : '재료가 모자라요'}</button></div>`;
+      }).join('')}</div>`;
+    }).join('');
+  });
+
+  /* --- 무역 탭 --- */
+  mount('trLock', phase, () => phase === 'trade' ? '' : `<div class="banner ${phase === 'autarky' ? 'stop' : ''}">${{
+    lobby: '⏳ 아직 무역 시간이 아니에요.', autarky: '🚫 지금은 무역 금지 시간이에요. 선생님이 무역을 열어 주실 때까지 기다려요.', finished: '🏁 무역이 끝났어요. 아래에서 오고 간 편지를 볼 수 있어요.',
+  }[phase]}</div>`);
+  mount('trInv', { inv: me.inventory }, () => `<section class="card"><h3>🎒 지금 우리 창고</h3>${invTiles(me.inventory, me.material)}</section>`);
+  mount('trInbox', { phase, inc: st.incoming.map((t) => t.id), inv: me.inventory }, () => {
+    if (phase !== 'trade') return '';
+    if (!st.incoming.length) return `<section class="card"><h3>💌 받은 제안</h3><p class="muted">아직 받은 제안이 없어요. 먼저 편지를 보내 볼까요?</p></section>`;
+    return `<h3 style="margin-top:20px">💌 받은 제안 (${st.incoming.length})</h3>` + st.incoming.map((t) => {
+      const have = me.inventory[t.wantItem] ?? 0;
+      return `<article class="letter" style="--c:${gcol(t.from)}">
+        <span class="stamp">${flagEl(t.from, true)}</span>
+        <h4>${t.from}모둠의 무역 제안</h4>
+        ${dealHTML(t)}
+        <p class="small">우리 모둠의 ${esc(raw(t.wantItem).name)}: ${have}개 ${have >= t.wantQty ? '(충분해요)' : '(모자라요)'}</p>
+        <blockquote class="quote" style="--c:${gcol(t.from)}">${esc(t.message)}</blockquote>
+        <label class="f" for="re-${t.id}">답장 쓰기</label>
+        <textarea id="re-${t.id}" data-draft="re-${t.id}" rows="2" maxlength="${S.cfg.limits.maxText}" placeholder="예) 좋아요! 우리도 면화가 필요했어요. 같이 물품을 만들어요."></textarea>
+        <p class="hint">수락할 때는 답장을 ${S.cfg.limits.minReply}글자 이상 써요. 거절할 때는 이유를 써 주면 더 좋아요.</p>
+        <div class="row"><button class="btn go" data-act="accept" data-id="${t.id}">✅ 수락하기</button>
+        <button class="btn no" data-act="reject" data-id="${t.id}">❌ 거절하기</button></div></article>`;
+    }).join('');
+  });
+  mount('trForm', { phase, me: me.id }, () => {
+    if (phase !== 'trade') return '';
+    const others = S.cfg.groups.filter((g) => g.id !== me.id);
+    if (!S.drafts.gi) S.drafts.gi = me.material;
+    if (!S.drafts.wi) S.drafts.wi = Object.keys(S.cfg.raw).find((k) => k !== me.material);
+    if (!S.drafts.gq) S.drafts.gq = '1';
+    if (!S.drafts.wq) S.drafts.wq = '1';
+    const opts = (sel) => Object.entries(S.cfg.raw).map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${v.emoji} ${esc(v.name)}</option>`).join('');
+    const qty = (sel) => [1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${String(n) === String(sel) ? 'selected' : ''}>${n}개</option>`).join('');
+    return `<section class="card"><h3>✍️ 무역 제안문 쓰기</h3>
+      <label class="f">① 어느 모둠에게 보낼까요?</label>
+      <div class="pick" id="pickTo">${others.map((g) => `
+        <button type="button" class="pickbtn ${Number(S.drafts.to) === g.id ? 'on' : ''}" data-act="pick-to" data-g="${g.id}" style="--c:${gcol(g.id)}">
+          ${flagEl(g.id)}<span>${g.id}모둠<small>${raw(g.material).emoji} ${esc(raw(g.material).name)}</small></span></button>`).join('')}</div>
+      <label class="f" for="gi">② 우리가 줄 물품</label>
+      <div class="two"><select id="gi" data-draft="gi">${opts(S.drafts.gi)}</select><select id="gq" data-draft="gq">${qty(S.drafts.gq)}</select></div>
+      <label class="f" for="wi">③ 우리가 받고 싶은 물품</label>
+      <div class="two"><select id="wi" data-draft="wi">${opts(S.drafts.wi)}</select><select id="wq" data-draft="wq">${qty(S.drafts.wq)}</select></div>
+      <label class="f" for="msg">④ 무역 제안문</label>
+      <div class="example"><b>좋은 제안문에 들어갈 것</b> 인사 · 우리가 줄 수 있는 것 · 받고 싶은 것 · 서로에게 좋은 이유<br>
+        예) 안녕하세요, 5모둠! 우리는 목재가 남아요. 목재 2개와 석유 1개를 바꾸면 5모둠은 연료 통을 만들 수 있고 우리도 에너지 카드를 만들 수 있어요. 수락해 주세요!</div>
+      <textarea id="msg" data-draft="msg" rows="4" maxlength="${S.cfg.limits.maxText}" placeholder="여기에 제안문을 써 보세요."></textarea>
+      <div class="cnt" id="msgCount"></div>
+      <p style="margin-top:10px"><button class="btn big" data-act="send">💌 제안 보내기</button></p></section>`;
+  }, updateCount);
+  mount('trOut', { out: st.outgoing.map((t) => [t.id, t.status, t.reply]) }, () => {
+    if (!st.outgoing.length) return '';
+    return `<h3 style="margin-top:20px">📮 내가 보낸 제안</h3>` + st.outgoing.map((t) => mailHTML(t,
+      t.status === 'pending' ? `<p><button class="btn sm no" data-act="cancel" data-id="${t.id}">제안 취소하기</button></p>` : '')).join('');
+  });
+  mount('trFeed', { feed: st.feed.map((f) => f.id) }, () => `<section class="card"><h3>📰 우리 반 무역 소식</h3>
+    ${st.feed.length ? st.feed.map((f) => `<div class="feed">${flagEl(f.from)} ⇄ ${flagEl(f.to)}
+      <span class="item">${itemQty(f.giveItem, f.giveQty)}</span> ⇄ <span class="item">${itemQty(f.wantItem, f.wantQty)}</span></div>`).join('')
+      : '<p class="muted">아직 성사된 무역이 없어요.</p>'}</section>`);
+
+  /* --- 미션 탭 --- */
+  mount('missionCard', { m: me.mission }, () => {
+    const m = me.mission;
+    if (!m) return `<section class="card mission"><div class="me">🎯</div><h3>미션 카드</h3><p>게임이 시작되면 우리 모둠의 미션 카드가 나와요.</p></section>`;
+    return `<section class="card mission">${m.done ? '<span class="done">달성!</span>' : ''}
+      <div class="me">${m.emoji}</div><h3>${esc(m.title)}</h3><p style="font-size:1.1rem">${esc(m.desc)}</p>
+      <p><span class="bonus">보너스 +${m.bonus}점</span></p>
+      <div class="bar" style="margin:12px auto;max-width:320px"><i style="width:${Math.round((m.progress / m.target) * 100)}%;background:${m.done ? '#2fbf71' : 'var(--sea)'}"></i></div>
+      <p><b>${m.progress} / ${m.target}</b></p>
+      <p class="small">미션 카드는 우리 모둠만 알고 있어요. 달성하면 점수가 자동으로 더해져요.</p></section>`;
+  });
+  mount('myCrafts', { c: me.crafts }, () => {
+    const list = Object.entries(me.crafts);
+    return `<section class="card"><h3>🧰 우리가 만든 물품</h3>${list.length ? `<div class="row">${list.map(([k, n]) => `<span class="chip">${S.cfg.products[k].emoji} ${esc(S.cfg.products[k].name)} ×${n}</span>`).join('')}</div>` : '<p class="muted">아직 만든 물품이 없어요.</p>'}</section>`;
+  });
+
+  /* --- 순위 탭 --- */
+  mount('board', { b: st.board.map((x) => [x.id, x.total]), me: me.id }, () => {
+    const max = Math.max(150, ...st.board.map((b) => b.total));
+    return `<section class="card"><h3>🏆 모둠 순위</h3><ol class="rank">${st.board.map((b, i) => `
+      <li class="${b.id === me.id ? 'me' : ''}"><span class="no">${i + 1}</span>
+      <span>${flagEl(b.id)} ${raw(b.material).emoji}</span>
+      <div class="bar"><i style="width:${Math.round((b.total / max) * 100)}%"></i></div><b>${b.total}점</b></li>`).join('')}</ol></section>`;
+  });
+  mount('final', { phase, r: st.results ? st.results.map((x) => [x.id, x.total]) : null, cmp: st.compare }, () => {
+    if (phase !== 'finished' || !st.results) return '';
+    const mine = st.results.find((r) => r.id === me.id);
+    return `<section class="card final"><div class="big">🏁 우리 모둠 ${mine.rank}위!</div>
+      <p>물품 ${mine.craftScore}점 + 미션 ${mine.bonus}점 = <b>${mine.total}점</b></p></section>
+      ${compareHTML(st.compare)}
+      <section class="card"><h3>🎯 모둠별 미션 공개</h3>${st.results.map((r) => `<p>${flagEl(r.id)} ${r.mission ? `${r.mission.emoji} ${esc(r.mission.title)} — ${esc(r.mission.desc)} ${r.mission.done ? '✅' : '❌'}` : '-'}</p>`).join('')}</section>`;
+  });
+}
+
+function updateCount() {
+  const c = $('#msgCount'), t = $('#msg');
+  if (!c || !t || !S.cfg) return;
+  const n = Array.from(t.value.trim()).length, min = S.cfg.limits.minProposal;
+  c.textContent = n >= min ? `${n}자 — 보낼 수 있어요` : `${n}자 (${min}글자 이상 써 주세요)`;
+  c.classList.toggle('ok', n >= min);
+}
+
+/* =====================================================================
+   교사 화면
+   ===================================================================== */
+function buildTeacherShell() {
+  $('#app').innerHTML = `<div class="tshell">
+    <header id="tHdr" class="thead"></header>
+    <section class="card" style="margin-top:20px"><h3>🔑 모둠 입장 코드</h3><div id="tCodes"></div></section>
+    <div id="tFinal"></div>
+    <div class="tgrid">
+      <section class="card" style="margin-top:0"><h3>📊 모둠 현황</h3><div class="scroll" id="tTable"></div></section>
+      <section class="card" style="margin-top:0"><h3>📬 무역 편지함</h3><div id="tFeed"></div></section>
+    </div></div>`;
+  S.sigs = {}; S.shell = 'teacher';
+}
+
+function renderTeacher() {
+  const st = S.st, phase = st.game.phase;
+  if (S.shell !== 'teacher') buildTeacherShell();
+
+  mount('tHdr', { phase, p: st.game.production }, () => {
+    const ctrl = {
+      lobby: `<div class="settings">
+        <label>재료 지급량(회당)<input id="setProd" type="number" min="1" max="10" data-draft="prod" value="4"></label>
+        <label>자급자족(분)<input id="setAut" type="number" min="0" max="30" step="0.5" data-draft="aut" value="2"></label>
+        <label>무역(분)<input id="setTrd" type="number" min="1" max="60" step="0.5" data-draft="trd" value="12"></label>
+        <button class="btn go big" data-act="t-start">▶ 게임 시작</button></div>`,
+      autarky: `<button class="btn go big" data-act="t-open">🤝 무역 열기</button><button class="btn sm" data-act="t-extend">+1분</button><button class="btn no sm" data-act="t-finish">🏁 끝내기</button>`,
+      trade: `<button class="btn sm" data-act="t-extend">+1분</button><button class="btn big" data-act="t-finish">🏁 게임 끝내기</button>`,
+      finished: `<button class="btn sea big" data-act="t-reset">🔄 새 게임 준비</button>`,
+    }[phase];
+    return `<h2>🧭 교사 화면</h2><span class="ph">${PHASE[phase]}</span><span class="timer" data-timer>--:--</span><span class="sp"></span>
+      <div class="row">${ctrl}${phase !== 'lobby' && phase !== 'finished' ? '<button class="btn no sm" data-act="t-reset">초기화</button>' : ''}</div>`;
+  }, () => { /* 입력값 기본값 복원은 mount가 처리 */ });
+
+  mount('tCodes', st.groups.map((g) => [g.id, g.code, g.online]), () => `<div class="codes">${st.groups.map((g) => `
+    <div class="code">${flagEl(g.id)} ${raw(g.material).emoji} ${esc(raw(g.material).name)} <span title="접속 상태">${g.online ? '🟢' : '⚪'}</span>
+    <div class="cd">${esc(g.code)}</div></div>`).join('')}</div>
+    <p class="small">모둠은 번호와 이 코드로 입장해요. 새 게임 준비를 누르면 코드가 새로 만들어져요.</p>`);
+
+  const ranked = [...st.groups].sort((a, b) => b.total - a.total || a.id - b.id);
+  mount('tTable', st.groups.map((g) => [g.id, g.online, g.inventory, g.crafts, g.tradeCount, g.mission && [g.mission.progress, g.mission.done], g.total]), () => `
+    <table><thead><tr><th>순위</th><th>모둠</th><th>창고</th><th>만든 물품</th><th>거래</th><th>미션</th><th style="text-align:right">점수</th></tr></thead><tbody>
+    ${st.groups.map((g) => `<tr><td class="rk">${ranked.findIndex((x) => x.id === g.id) + 1}</td>
+      <td>${flagEl(g.id)} ${raw(g.material).emoji}</td>
+      <td>${Object.entries(g.inventory).filter(([, n]) => n > 0).map(([k, n]) => `<span class="chip">${raw(k).emoji}${n}</span>`).join(' ') || '<span class="muted">-</span>'}</td>
+      <td>${Object.entries(g.crafts).map(([k, n]) => `<span class="chip">${S.cfg.products[k].emoji}×${n}</span>`).join(' ') || '<span class="muted">-</span>'}</td>
+      <td>${g.tradeCount}회</td>
+      <td>${g.mission ? `${g.mission.emoji} ${esc(g.mission.title)} ${g.mission.progress}/${g.mission.target} ${g.mission.done ? '✅' : ''}` : '-'}</td>
+      <td class="pts">${g.total}</td></tr>`).join('')}</tbody></table>`);
+
+  mount('tFinal', { phase, c: st.compare }, () => {
+    if (phase !== 'finished') return '';
+    return `${compareHTML(st.compare)}
+      <section class="card"><h3>💬 함께 이야기해 봐요</h3>
+        <ol><li>자급자족 시간에는 왜 아무도 점수를 내지 못했을까요?</li>
+        <li>무역을 하자 모든 모둠에게 이득이 생긴 이유는 무엇일까요?</li>
+        <li>금과 목재를 가진 모둠은 왜 협상에서 유리했을까요? (희소성)</li>
+        <li>가장 설득력 있었던 무역 제안문은 무엇이었나요? 오른쪽 편지함에서 함께 읽어 봐요.</li></ol></section>`;
+  });
+
+  mount('tFeed', st.trades.map((t) => [t.id, t.status, t.reply]), () => {
+    const s = st.summary;
+    const head = `<p class="small">성공 ${s.accepted} · 기다림 ${s.pending} · 거절 ${s.rejected}</p>`;
+    return head + (st.trades.length ? st.trades.map((t) => mailHTML(t)).join('') : '<p class="muted">아직 오간 편지가 없어요.</p>');
+  });
+}
+
+/* =====================================================================
+   행동(버튼) 처리
+   ===================================================================== */
+async function guarded(fn) {
+  if (S.busy) return;
+  S.busy = true;
+  try { await fn(); } catch (e) { if (e.status === 401 && S.session) logout(true); else toast(e.message || '문제가 생겼어요.', 'warn'); }
+  finally { S.busy = false; }
+}
+const tpost = (a, body = {}) => api('teacher/' + a, { method: 'POST', body });
+
+const ACTIONS = {
+  role: (b) => { S.loginRole = b.dataset.r; renderLoginBody(); },
+  'pick-login': (b) => {
+    S.loginGroup = Number(b.dataset.g);
+    document.querySelectorAll('.gpick button').forEach((x) => x.classList.toggle('on', x === b));
+  },
+  login: () => guarded(doLogin),
+  tab: (b) => { S.tab = b.dataset.t; S.sigs.nav = null; showTab(); renderStudent(); window.scrollTo(0, 0); },
+  'pick-to': (b) => {
+    S.drafts.to = b.dataset.g;
+    document.querySelectorAll('#pickTo .pickbtn').forEach((x) => x.classList.toggle('on', x === b));
+  },
+  craft: (b) => guarded(async () => {
+    const p = S.cfg.products[b.dataset.p];
+    const r = await api('craft', { method: 'POST', body: { product: b.dataset.p } });
+    toast(`🎉 ${p.name} 완성! +${r.points}점`, 'ok');
+    await poll();
+  }),
+  send: () => guarded(async () => {
+    const d = S.drafts, lim = S.cfg.limits;
+    if (!d.to) throw new Error('제안을 보낼 모둠을 골라 주세요.');
+    const msg = (d.msg || '').trim();
+    if (Array.from(msg).length < lim.minProposal) throw new Error(`무역 제안문을 ${lim.minProposal}글자 이상 써 주세요.`);
+    await api('propose', { method: 'POST', body: { to: Number(d.to), giveItem: d.gi, giveQty: Number(d.gq), wantItem: d.wi, wantQty: Number(d.wq), message: msg } });
+    S.drafts.msg = ''; S.sigs.trForm = null;
+    toast('💌 제안을 보냈어요! 답장을 기다려요.', 'ok');
+    await poll();
+  }),
+  accept: (b) => guarded(async () => {
+    const id = Number(b.dataset.id), reply = (S.drafts['re-' + id] || '').trim();
+    if (Array.from(reply).length < S.cfg.limits.minReply) throw new Error(`수락 답장을 ${S.cfg.limits.minReply}글자 이상 써 주세요.`);
+    try { await api('respond', { method: 'POST', body: { id, accept: true, reply } }); }
+    catch (e) { await poll(); throw e; }
+    delete S.drafts['re-' + id];
+    toast('✅ 무역 성공! 창고를 확인해 보세요.', 'ok');
+    await poll();
+  }),
+  reject: (b) => guarded(async () => {
+    const id = Number(b.dataset.id), reply = (S.drafts['re-' + id] || '').trim();
+    await api('respond', { method: 'POST', body: { id, accept: false, reply } });
+    delete S.drafts['re-' + id];
+    toast('거절 답장을 보냈어요.');
+    await poll();
+  }),
+  cancel: (b) => guarded(async () => { await api('cancel', { method: 'POST', body: { id: Number(b.dataset.id) } }); toast('제안을 취소했어요.'); await poll(); }),
+
+  't-start': () => guarded(async () => {
+    const num = (k, d) => { const v = Number(S.drafts[k]); return Number.isFinite(v) && S.drafts[k] !== '' && S.drafts[k] !== undefined ? v : d; };
+    await tpost('start', { production: num('prod', 4), autarkySeconds: Math.round(num('aut', 2) * 60), tradeSeconds: Math.round(num('trd', 12) * 60) });
+    toast('게임을 시작했어요! 자급자족 시간이에요.', 'ok'); await poll();
+  }),
+  't-open': () => guarded(async () => {
+    if (!confirm('무역을 열까요? 모둠마다 재료가 한 번 더 지급돼요.')) return;
+    await tpost('open_trade'); toast('무역을 열었어요.', 'ok'); await poll();
+  }),
+  't-extend': () => guarded(async () => { await tpost('extend', { seconds: 60 }); toast('1분을 늘렸어요.'); await poll(); }),
+  't-finish': () => guarded(async () => {
+    if (!confirm('게임을 끝내고 결과를 보여 줄까요?')) return;
+    await tpost('finish'); await poll();
+  }),
+  't-reset': () => guarded(async () => {
+    if (!confirm('모든 기록이 지워지고 입장 코드가 새로 만들어져요. 계속할까요?')) return;
+    S.drafts = {}; await tpost('reset'); toast('처음 상태로 돌렸어요.'); await poll();
+  }),
+};
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]');
+  if (!b || b.disabled) return;
+  const fn = ACTIONS[b.dataset.act];
+  if (!fn) return;
+  Promise.resolve(fn(b, e)).catch((err) => toast(err.message || '문제가 생겼어요.', 'warn'));
+});
+
+/* =====================================================================
+   데이터 가져오기(3초마다) & 타이머
+   ===================================================================== */
+async function poll() {
+  if (!S.session) return;
+  try {
+    const st = await api('state');
+    S.st = st; S.cfg = st.config;
+    S.skew = Date.parse(st.serverNow) - Date.now();
+    const wasOffline = S.offline; S.offline = false;
+    if (wasOffline) S.sigs.hdr = null;
+    if (S.session.role === 'teacher') renderTeacher(); else renderStudent();
+    tick();
+  } catch (e) {
+    if (e.status === 401) return logout(true);
+    if (!S.offline) { S.offline = true; S.sigs.hdr = null; if (S.st && S.session?.role === 'group') renderStudent(); }
+  }
+}
+function schedule() {
+  clearTimeout(S.pollT);
+  S.pollT = setTimeout(async () => { if (!document.hidden) await poll(); schedule(); }, 3000);
+}
+function tick() {
+  const g = S.st?.game;
+  if (!g) return;
+  const left = g.endsAt ? Math.max(0, Math.round((Date.parse(g.endsAt) - (Date.now() + S.skew)) / 1000)) : null;
+  document.querySelectorAll('[data-timer]').forEach((el) => {
+    el.textContent = left === null ? '--:--' : fmtTime(left);
+    el.classList.toggle('low', left !== null && left > 0 && left <= 30);
+    el.classList.toggle('zero', left === 0);
+  });
+}
+setInterval(tick, 500);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+
+function startApp() {
+  S.st = null; S.shell = null; S.seen = null; S.tab = 'craft'; S.drafts = {}; S.sigs = {};
+  $('#app').innerHTML = '<p style="text-align:center;padding:60px 0">불러오는 중…</p>';
+  poll(); schedule();
+}
+
+if (S.session) startApp(); else renderLogin();
+</script>
+</body>
+</html>
