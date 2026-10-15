@@ -548,15 +548,15 @@ function renderStudent() {
   mount('trShop', { phase, paused: st.game.paused, inv: me.inventory, give1: S.drafts.shopGive1, give2: S.drafts.shopGive2, want: S.drafts.shopWant, qty1: S.drafts.shopQty1, qty2: S.drafts.shopQty2, exchanges: me.shopExchangeCount || 0 }, () => {
     const keys = Object.keys(S.cfg.raw);
     if (!S.drafts.shopGive1) S.drafts.shopGive1 = me.material;
-    if (!S.drafts.shopGive2 || S.drafts.shopGive2 === S.drafts.shopGive1) S.drafts.shopGive2 = keys.find((k) => k !== S.drafts.shopGive1);
-    if (!S.drafts.shopWant || S.drafts.shopWant === S.drafts.shopGive1 || S.drafts.shopWant === S.drafts.shopGive2) S.drafts.shopWant = keys.find((k) => k !== S.drafts.shopGive1 && k !== S.drafts.shopGive2);
+    if (!S.drafts.shopGive2) S.drafts.shopGive2 = S.drafts.shopGive1;
+    if (!S.drafts.shopWant || S.drafts.shopWant === S.drafts.shopGive1) S.drafts.shopWant = keys.find((k) => k !== S.drafts.shopGive1);
     if (S.drafts.shopQty1 === undefined) S.drafts.shopQty1 = '2';
     if (S.drafts.shopQty2 === undefined) S.drafts.shopQty2 = '0';
     const opts = (selected) => keys.map((k) => `<option value="${k}" ${k === selected ? 'selected' : ''}>${raw(k).emoji} ${esc(raw(k).name)} · ${me.inventory[k] ?? 0}개 보유</option>`).join('');
     const active = phase === 'trade' && !st.game.paused;
     const q1 = Math.max(0, Number(S.drafts.shopQty1) || 0), q2 = Math.max(0, Number(S.drafts.shopQty2) || 0);
     const totalCorrect = q1 + q2 === 2 && Number.isInteger(q1) && Number.isInteger(q2);
-    const enough = (me.inventory[S.drafts.shopGive1] ?? 0) >= q1 && (me.inventory[S.drafts.shopGive2] ?? 0) >= q2;
+    const enough = S.drafts.shopGive1 === S.drafts.shopGive2 ? (me.inventory[S.drafts.shopGive1] ?? 0) >= q1 + q2 : (me.inventory[S.drafts.shopGive1] ?? 0) >= q1 && (me.inventory[S.drafts.shopGive2] ?? 0) >= q2;
     const exchangesUsed = me.shopExchangeCount || 0;
     const exchangesRemaining = Math.max(0, 5 - exchangesUsed);
     return `<section class="card"><h3>🏪 국내 생산</h3><p class="hint">내놓을 재화 두 종류와 각각의 개수를 선택하세요. 두 재화의 개수 합계가 반드시 2개여야 하며, 교환할 때마다 원하는 재화 1개를 받아요.</p><div class="banner"><b>이번 게임 상점 이용: ${exchangesUsed}/5회</b> · ${exchangesRemaining > 0 ? `${exchangesRemaining}회 남음` : '이용 횟수를 모두 사용했어요.'}</div>
@@ -570,7 +570,7 @@ function renderStudent() {
       ${!totalCorrect ? '<p class="muted">내놓을 두 재화의 개수 합계를 정확히 2개로 맞춰 주세요.</p>' : ''}
       ${totalCorrect && !enough ? '<p class="muted">선택한 재화의 보유량이 부족해요.</p>' : ''}
       ${!active ? `<p class="muted">상점은 무역 시간에 게임이 진행 중일 때 이용할 수 있어요.</p>` : ''}
-      <button class="btn go" data-act="shop-exchange" ${active && enough && totalCorrect && S.drafts.shopGive1 !== S.drafts.shopGive2 && S.drafts.shopWant !== S.drafts.shopGive1 && S.drafts.shopWant !== S.drafts.shopGive2 && exchangesRemaining > 0 ? '' : 'disabled'}>🔄 재화 2개를 내고 1개 받기</button></div></section>`;
+      <button class="btn go" data-act="shop-exchange" ${active && enough && totalCorrect && S.drafts.shopWant !== S.drafts.shopGive1 && S.drafts.shopWant !== S.drafts.shopGive2 && exchangesRemaining > 0 ? '' : 'disabled'}>🔄 재화 2개를 내고 1개 받기</button></div></section>`;
   });
   mount('trInbox', { phase, paused: st.game.paused, inc: st.incoming.map((t) => [t.id, t.status, t.reply]), inv: me.inventory }, () => {
     const canReply = phase === 'trade' && !st.game.paused;
@@ -588,7 +588,7 @@ function renderStudent() {
         ${t.reply ? `<blockquote class="quote reply">${esc(t.reply)}</blockquote>` : ''}
         ${pending && canReply ? `<label class="f" for="re-${t.id}">답장 쓰기</label>
         <textarea id="re-${t.id}" data-draft="re-${t.id}" rows="2" maxlength="${S.cfg.limits.maxText}" placeholder="예) 좋아요! 우리도 면화가 필요했어요. 같이 물품을 만들어요."></textarea>
-        <p class="hint">수락할 때는 답장을 ${S.cfg.limits.minReply}글자 이상 써요. 거절할 때는 이유를 써 주면 더 좋아요.</p>
+        <p class="hint">수락하거나 거절할 때 답장을 쓰지 않아도 돼요. 이유를 적으면 서로의 생각을 더 잘 알 수 있어요.</p>
         <div class="row"><button class="btn go" data-act="accept" data-id="${t.id}">✅ 수락하기</button>
         <button class="btn no" data-act="reject" data-id="${t.id}">❌ 거절하기</button></div>` : ''}</article>`;
     }).join('') + '</div></section>';
@@ -602,7 +602,7 @@ function renderStudent() {
     if (!S.drafts.wq) S.drafts.wq = '1';
     const opts = (sel) => Object.entries(S.cfg.raw).map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${v.emoji} ${esc(v.name)}</option>`).join('');
     const qty = (sel) => [1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${String(n) === String(sel) ? 'selected' : ''}>${n}개</option>`).join('');
-    return `<section class="card"><h3>✍️ 무역 제안문 쓰기</h3>
+    return `<section class="card"><h3>🤝 무역 제안 보내기</h3><p class="hint">글을 쓰지 않아도 물품을 선택해 제안할 수 있어요. 단, 미션이 ‘친절한 교환가’라면 공손한 표현을 넣어야 미션을 달성할 수 있어요.</p>
       <label class="f">① 어느 모둠에게 보낼까요?</label>
       <div class="pick" id="pickTo">${others.map((g) => `
         <button type="button" class="pickbtn ${Number(S.drafts.to) === g.id ? 'on' : ''}" data-act="pick-to" data-g="${g.id}" style="--c:${gcol(g.id)}">
@@ -611,10 +611,9 @@ function renderStudent() {
       <div class="two"><select id="gi" data-draft="gi">${opts(S.drafts.gi)}</select><select id="gq" data-draft="gq">${qty(S.drafts.gq)}</select></div>
       <label class="f" for="wi">③ 우리가 받고 싶은 물품</label>
       <div class="two"><select id="wi" data-draft="wi">${opts(S.drafts.wi)}</select><select id="wq" data-draft="wq">${qty(S.drafts.wq)}</select></div>
-      <label class="f" for="msg">④ 무역 제안문</label>
-      <div class="example"><b>좋은 제안문에 들어갈 것</b> 인사 · 우리가 줄 수 있는 것 · 받고 싶은 것 · 서로에게 좋은 이유<br>
-        예) 안녕하세요, 5모둠! 우리는 목재가 남아요. 목재 2개와 석유 1개를 바꾸면 5모둠은 연료 통을 만들 수 있고 우리도 에너지 카드를 만들 수 있어요. 수락해 주세요!</div>
-      <textarea id="msg" data-draft="msg" rows="4" maxlength="${S.cfg.limits.maxText}" placeholder="여기에 제안문을 써 보세요."></textarea>
+      <label class="f" for="msg">④ 무역 제안문 (선택)</label>
+      <div class="example"><b>선택 사항</b> 메시지를 비워 두어도 제안을 보낼 수 있어요. 친절한 교환가 미션에서는 “안녕하세요”, “교환해 주실 수 있을까요?”, “부탁드립니다” 같은 공손한 표현을 넣어 주세요.</div>
+      <textarea id="msg" data-draft="msg" rows="4" maxlength="${S.cfg.limits.maxText}" placeholder="선택 사항: 공손하게 제안 내용을 써 보세요."></textarea>
       <div class="cnt" id="msgCount"></div>
       <p style="margin-top:10px"><button class="btn big" data-act="send">💌 제안 보내기</button></p></section>`;
   }, updateCount);
@@ -666,8 +665,8 @@ function updateCount() {
   const c = $('#msgCount'), t = $('#msg');
   if (!c || !t || !S.cfg) return;
   const n = Array.from(t.value.trim()).length, min = S.cfg.limits.minProposal;
-  c.textContent = n >= min ? `${n}자 — 보낼 수 있어요` : `${n}자 (${min}글자 이상 써 주세요)`;
-  c.classList.toggle('ok', n >= min);
+  c.textContent = n === 0 ? '선택 사항 — 비워 두어도 제안할 수 있어요' : `${n}자 입력됨`;
+  c.classList.toggle('ok', n === 0 || n > 0);
 }
 
 /* =====================================================================
@@ -800,7 +799,7 @@ const ACTIONS = {
     const d = S.drafts, lim = S.cfg.limits;
     if (!d.to) throw new Error('제안을 보낼 모둠을 골라 주세요.');
     const msg = (d.msg || '').trim();
-    if (Array.from(msg).length < lim.minProposal) throw new Error(`무역 제안문을 ${lim.minProposal}글자 이상 써 주세요.`);
+    if (msg.length > lim.maxText) throw new Error(`무역 제안문은 ${lim.maxText}글자까지 쓸 수 있어요.`);
     await api('propose', { method: 'POST', body: { to: Number(d.to), giveItem: d.gi, giveQty: Number(d.gq), wantItem: d.wi, wantQty: Number(d.wq), message: msg } });
     S.drafts.msg = ''; S.sigs.trForm = null;
     toast('💌 제안을 보냈어요! 답장을 기다려요.', 'ok');
@@ -808,7 +807,7 @@ const ACTIONS = {
   }),
   accept: (b) => guarded(async () => {
     const id = Number(b.dataset.id), reply = (S.drafts['re-' + id] || '').trim();
-    if (Array.from(reply).length < S.cfg.limits.minReply) throw new Error(`수락 답장을 ${S.cfg.limits.minReply}글자 이상 써 주세요.`);
+
     try { await api('respond', { method: 'POST', body: { id, accept: true, reply } }); }
     catch (e) { await poll(); throw e; }
     delete S.drafts['re-' + id];

@@ -33,6 +33,8 @@ const PRODUCTS = {
   clothes:   { name: '생활용품 세트',        emoji: '👕', level: 1, points: 30, recipe: { cotton: 1, food: 1 } },
   paper:     { name: '종이·포장재 묶음',      emoji: '📦', level: 1, points: 30, recipe: { wood: 1, cotton: 1 } },
   farmkit:   { name: '농업 도구 세트',        emoji: '🌱', level: 1, points: 30, recipe: { iron: 1, food: 1 } },
+  synthetics:{ name: '합성 섬유',             emoji: '🧵', level: 1, points: 50, recipe: { oil: 1, cotton: 1 } },
+  supplykit: { name: '생활 기반 꾸러미',       emoji: '🧰', level: 1, points: 50, recipe: { wood: 1, iron: 1, food: 1 } },
   // 심화 가공품: 기본 가공품 1개 + 원재료 1종, 각 100점
   smart:     { name: '스마트 기기',          emoji: '📱', level: 2, points: 100, recipe: { cart: 1, oil: 1 } },
   fashion:   { name: '고급 의류',            emoji: '🧥', level: 2, points: 100, recipe: { clothes: 1, cotton: 1 } },
@@ -47,6 +49,7 @@ const itemInfo = (k) => RAW[k] || PRODUCTS[k] || { name: k, emoji: '📦' };
 const MISSIONS = {
   partners3: { title: '무역왕',       emoji: '🌏', desc: '서로 다른 3개 모둠과 무역 성공하기',        bonus: 40, target: 3 },
   accept2:   { title: '친절한 상인',  emoji: '💌', desc: '다른 모둠의 제안을 2번 수락하기',           bonus: 30, target: 2 },
+  politeTrade: { title: '친절한 교환가', emoji: '🙏', desc: '공손한 표현을 넣어 무역을 제안하기', bonus: 20, target: 1 },
   lv3:       { title: '도전자',       emoji: '🚀', desc: '난이도 3 최종 완성품 1개 만들기',           bonus: 50, target: 1 },
   allLevels: { title: '전 단계 정복', emoji: '🏅', desc: '난이도 1·2·3 물품을 각각 1개 이상 만들기', bonus: 60, target: 3 },
   lv2x2:     { title: '기술자',       emoji: '🔧', desc: '난이도 2 심화 가공품 2개 만들기',           bonus: 40, target: 2 },
@@ -284,7 +287,8 @@ function computeStats(all) {
     const partners = new Set(mine.map((t) => (t.from_group === g.id ? t.to_group : t.from_group)));
     const accepts = accepted.filter((t) => t.to_group === g.id).length;
     const startLv = { 1: g.mission_start_lv1 || 0, 2: g.mission_start_lv2 || 0, 3: g.mission_start_lv3 || 0 };
-    const mission = g.mission ? missionInfo(g.mission, { lv, partners: partners.size, accepts, missionCount: g.mission_count || 0, startLv, startPartners: g.mission_start_partners || 0, startAccepts: g.mission_start_accepts || 0 }) : null;
+    const politeTradeCount = all.trades.filter((t) => t.from_group === g.id && /부탁드립|부탁합니다|바꿔\s*주실|교환해\s*주실|가능할까요|괜찮으시다면|감사합니다|안녕하세요/.test(t.message || '')).length;
+    const mission = g.mission ? missionInfo(g.mission, { lv, partners: partners.size, accepts, politeTradeCount, missionCount: g.mission_count || 0, startLv, startPartners: g.mission_start_partners || 0, startAccepts: g.mission_start_accepts || 0 }) : null;
     const bonus = (g.mission_bonus || 0) + (mission && mission.done ? mission.bonus : 0);
 
     out[g.id] = {
@@ -446,8 +450,8 @@ async function propose(client, g, b) {
   for (const q of [giveQty, wantQty]) {
     if (!Number.isInteger(q) || q < 1 || q > LIMITS.maxQty) fail(400, `물품 개수는 1~${LIMITS.maxQty}개로 정해 주세요.`);
   }
-  if (len(message) < LIMITS.minProposal) fail(400, `무역 제안문을 ${LIMITS.minProposal}글자 이상 써 주세요.`);
   if (len(message) > LIMITS.maxText) fail(400, `무역 제안문은 ${LIMITS.maxText}글자까지 쓸 수 있어요.`);
+  if (g.mission === 'politeTrade' && !/부탁드립|부탁합니다|바꿔\s*주실|교환해\s*주실|가능할까요|괜찮으시다면|감사합니다|안녕하세요/.test(message)) fail(400, '친절한 교환가 미션 중에는 “안녕하세요”, “교환해 주실 수 있을까요?”, “부탁드립니다”처럼 공손한 표현을 넣어 글을 써야 해요.');
 
   const game = await getGame(client);
   if (game.phase !== 'trade' || game.paused) fail(403, game.paused ? '선생님이 게임을 잠시 멈췄어요.' : '지금은 무역 시간이 아니에요.');
@@ -475,7 +479,6 @@ async function shopExchange(client, g, b) {
   const giveQty2 = Number(b.giveQty2);
   const wantItem = String(b.wantItem || '');
   if (!RAW[giveItem1] || !RAW[giveItem2] || !RAW[wantItem]) fail(400, '내놓을 재화 두 종류와 받을 재화를 골라 주세요.');
-  if (giveItem1 === giveItem2) fail(400, '내놓을 재화는 서로 다른 두 종류로 선택해 주세요.');
   if (wantItem === giveItem1 || wantItem === giveItem2) fail(400, '받을 재화는 내놓는 재화와 다른 종류여야 해요.');
   if (!Number.isInteger(giveQty1) || !Number.isInteger(giveQty2) || giveQty1 < 0 || giveQty2 < 0 || giveQty1 + giveQty2 !== 2) fail(400, '내놓을 재화의 개수 합계는 반드시 2개여야 해요.');
 
@@ -492,7 +495,9 @@ async function shopExchange(client, g, b) {
       [g.id, [giveItem1, giveItem2, wantItem]]
     );
     const quantities = Object.fromEntries(inv.rows.map((row) => [row.item, row.qty]));
-    for (const [item, qty] of [[giveItem1, giveQty1], [giveItem2, giveQty2]]) {
+    const required = new Map();
+    for (const [item, qty] of [[giveItem1, giveQty1], [giveItem2, giveQty2]]) required.set(item, (required.get(item) || 0) + qty);
+    for (const [item, qty] of required) {
       if ((quantities[item] ?? 0) < qty) fail(400, `${RAW[item].name}이(가) 부족해요. 현재 ${(quantities[item] ?? 0)}개 있어요.`);
     }
     for (const [item, qty] of [[giveItem1, giveQty1], [giveItem2, giveQty2]]) {
@@ -509,7 +514,6 @@ async function respond(client, g, b) {
   const accept = b.accept === true;
   const reply = String(b.reply ?? '').trim();
   if (!Number.isInteger(id)) fail(400, '제안을 찾을 수 없어요.');
-  if (accept && len(reply) < LIMITS.minReply) fail(400, `수락 답장을 ${LIMITS.minReply}글자 이상 써 주세요.`);
   if (len(reply) > LIMITS.maxText) fail(400, `답장은 ${LIMITS.maxText}글자까지 쓸 수 있어요.`);
   const game = await getGame(client);
   if (game.phase !== 'trade' || game.paused) fail(403, game.paused ? '선생님이 게임을 잠시 멈췄어요.' : '지금은 무역 시간이 아니에요.');
