@@ -263,14 +263,14 @@ function toast(msg, kind = '') {
 }
 
 /* ---------- 공통 표현 ---------- */
-const raw = (k) => S.cfg.raw[k];
+const raw = (k) => S.cfg.raw[k] || S.cfg.products[k] || { name: k, emoji: '📦' };
 const flagEl = (id, lg) => `<span class="flag${lg ? ' lg' : ''}" style="--c:${gcol(id)}">${id}</span>`;
 const itemQty = (k, n) => `<span class="item"><span class="em">${raw(k).emoji}</span>${esc(raw(k).name)}${n != null ? ` <b>${n}개</b>` : ''}</span>`;
-const pts = (p) => S.cfg.levels[p.level].points;
+const pts = (p) => p.points ?? S.cfg.levels[p.level].points;
 const fmtTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 function invTiles(inv, own) {
-  return `<div class="inv">${Object.keys(S.cfg.raw).map((k) => `
+  return `<div class="inv">${[...Object.keys(S.cfg.raw), ...Object.keys(S.cfg.products)].map((k) => `
     <div class="tile ${k === own ? 'own' : ''}">
       ${k === own ? '<span class="tag">우리 특산품</span>' : ''}
       <span class="em">${raw(k).emoji}</span><span class="nm">${esc(raw(k).name)}</span>
@@ -294,7 +294,7 @@ function compareHTML(c) {
   return `<section class="card"><h3>무역을 하기 전과 후</h3>
     <div class="cmp"><span>🚫 자급자족</span><div class="bar ${c.autarky ? '' : 'zero'}"><i style="width:${w(c.autarky)}%"></i></div><b>${c.autarky}점</b></div>
     <div class="cmp"><span>🤝 무역 시간</span><div class="bar trade ${c.trade ? '' : 'zero'}"><i style="width:${w(c.trade)}%"></i></div><b>${c.trade}점</b></div>
-    <p>${text}</p><p class="small">6개 모둠이 만든 물품 점수를 모두 더한 값이에요. 미션 보너스는 뺐어요.</p></section>`;
+    <p>${text}</p><p class="small">12개 모둠이 만든 물품 점수를 모두 더한 값이에요. 미션 보너스는 뺐어요.</p></section>`;
 }
 
 function mailHTML(t, extra) {
@@ -445,7 +445,7 @@ function renderStudent() {
     const canPlay = !st.game.paused && (phase === 'autarky' || phase === 'trade');
     return [1, 2, 3].map((lv) => {
       const list = Object.entries(S.cfg.products).filter(([, p]) => p.level === lv);
-      return `<div class="lvhead"><h3>난이도 ${lv} · ${esc(S.cfg.levels[lv].name)}</h3><span class="pts">${S.cfg.levels[lv].points}점</span></div>
+      return `<div class="lvhead"><h3>난이도 ${lv} · ${esc(S.cfg.levels[lv].name)}</h3><span class="pts">${lv === 1 ? '30~50' : S.cfg.levels[lv].points}점</span></div>
       <div class="recipes">${list.map(([key, p]) => {
         const ings = Object.entries(p.recipe).map(([k, n]) => {
           const have = me.inventory[k] ?? 0;

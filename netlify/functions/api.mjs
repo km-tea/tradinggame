@@ -22,20 +22,24 @@ const GROUP_COUNT = 12;
 const GROUP_MATERIAL = ['wood', 'wood', 'iron', 'iron', 'cotton', 'cotton', 'food', 'food', 'oil', 'oil', 'gold', 'gold'];
 
 const LEVELS = {
-  1: { name: '기본 가공품', points: 30 },
-  2: { name: '심화 가공품', points: 70 },
-  3: { name: '최종 완성품', points: 150 },
+  1: { name: '기본 가공품', points: '30~50' },
+  2: { name: '심화 가공품', points: 100 },
+  3: { name: '최종 완성품', points: 200 },
 };
+// 기본 가공품은 원재료 2/3/4종 조합에 따라 30/40/50점.
+// 심화 가공품에는 기본 가공품이, 최종 완성품에는 심화 가공품이 반드시 포함된다.
 const PRODUCTS = {
-  cart:    { name: '건물 건설 카트',   emoji: '🏗️', level: 1, recipe: { wood: 1, iron: 1 } },
-  clothes: { name: '의류 세트',        emoji: '👕', level: 1, recipe: { cotton: 1, food: 1 } },
-  fuel:    { name: '연료 통',          emoji: '⛽', level: 1, recipe: { oil: 1, iron: 1 } },
-  smart:   { name: '스마트 기기',      emoji: '📱', level: 2, recipe: { iron: 1, gold: 1, oil: 1 } },
-  fashion: { name: '고급 원단/패션',   emoji: '🧥', level: 2, recipe: { cotton: 1, gold: 1, food: 1 } },
-  energy:  { name: '가공 에너지 카드', emoji: '🔋', level: 2, recipe: { oil: 1, wood: 1, food: 1 } },
-  city:    { name: '우주선 / 첨단 도시', emoji: '🚀', level: 3, recipe: { iron: 1, gold: 1, oil: 1, wood: 1 } },
-  civ:     { name: '호화 문명 세트',   emoji: '👑', level: 3, recipe: { cotton: 1, gold: 1, food: 1, wood: 1 } },
+  cart:    { name: '건설 자재 묶음',   emoji: '🏗️', level: 1, points: 30, recipe: { wood: 1, iron: 1 } },
+  clothes: { name: '생활용품 세트',    emoji: '👕', level: 1, points: 40, recipe: { cotton: 1, food: 1, wood: 1 } },
+  fuel:    { name: '산업용 장비',      emoji: '⚙️', level: 1, points: 50, recipe: { oil: 1, iron: 1, gold: 1, wood: 1 } },
+  smart:   { name: '스마트 기기',      emoji: '📱', level: 2, points: 100, recipe: { cart: 1, iron: 1, gold: 1 } },
+  fashion: { name: '고급 의류',        emoji: '🧥', level: 2, points: 100, recipe: { clothes: 1, cotton: 1, gold: 1 } },
+  energy:  { name: '고효율 에너지 장치', emoji: '🔋', level: 2, points: 100, recipe: { fuel: 1, oil: 1, food: 1 } },
+  city:    { name: '첨단 도시 모형',    emoji: '🚀', level: 3, points: 200, recipe: { smart: 1, iron: 1, oil: 1, wood: 1 } },
+  civ:     { name: '지속 가능한 미래 세트', emoji: '👑', level: 3, points: 200, recipe: { fashion: 1, cotton: 1, gold: 1, food: 1 } },
 };
+const ITEM_KEYS = [...RAW_KEYS, ...Object.keys(PRODUCTS)];
+const itemInfo = (k) => RAW[k] || PRODUCTS[k] || { name: k, emoji: '📦' };
 
 const MISSIONS = {
   partners3: { title: '무역왕',       emoji: '🌏', desc: '서로 다른 3개 모둠과 무역 성공하기',        bonus: 40, target: 3 },
@@ -157,7 +161,7 @@ async function ensureSchema(client) {
       'insert into tg_groups (id, name, material, code) values ($1,$2,$3,$4) on conflict (id) do update set name=excluded.name, material=excluded.material',
       [i, `${i}모둠`, GROUP_MATERIAL[i - 1], randomCode()]
     );
-    for (const k of RAW_KEYS) {
+    for (const k of ITEM_KEYS) {
       await client.query(
         'insert into tg_inventory (group_id, item, qty) values ($1,$2,0) on conflict do nothing',
         [i, k]
@@ -230,7 +234,7 @@ function computeStats(all) {
   const accepted = all.trades.filter((t) => t.status === 'accepted');
   const out = {};
   for (const g of all.groups) {
-    const inventory = Object.fromEntries(RAW_KEYS.map((k) => [k, 0]));
+    const inventory = Object.fromEntries(ITEM_KEYS.map((k) => [k, 0]));
     for (const r of all.inv) if (r.group_id === g.id) inventory[r.item] = r.qty;
 
     const crafts = {};
@@ -240,7 +244,7 @@ function computeStats(all) {
       if (r.group_id !== g.id) continue;
       const p = PRODUCTS[r.product];
       if (!p) continue;
-      const pts = LEVELS[p.level].points * r.n;
+      const pts = (p.points ?? LEVELS[p.level].points) * r.n;
       crafts[r.product] = (crafts[r.product] || 0) + r.n;
       lv[p.level] += r.n;
       craftScore += pts;
@@ -359,13 +363,14 @@ async function craft(client, g, b) {
     const have = (k) => rows.find((r) => r.item === k)?.qty ?? 0;
     const missing = Object.entries(p.recipe)
       .filter(([k, n]) => have(k) < n)
-      .map(([k]) => RAW[k].name);
+      .map(([k]) => itemInfo(k).name);
     if (missing.length) fail(400, `재료가 부족해요: ${missing.join(', ')}`);
     for (const [k, n] of Object.entries(p.recipe)) {
       await client.query('update tg_inventory set qty=qty-$3 where group_id=$1 and item=$2', [g.id, k, n]);
     }
     await client.query('insert into tg_crafts (group_id, product, phase) values ($1,$2,$3)', [g.id, key, game.phase]);
-    return json({ ok: true, product: key, points: LEVELS[p.level].points });
+    await client.query('update tg_inventory set qty=qty+1 where group_id=$1 and item=$2', [g.id, key]);
+    return json({ ok: true, product: key, points: p.points ?? LEVELS[p.level].points });
   });
 }
 
