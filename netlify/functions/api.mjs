@@ -91,8 +91,16 @@ create table if not exists tg_game (
   ends_at timestamptz,
   production int not null default 4,
   autarky_seconds int not null default 120,
-  trade_seconds int not null default 720
+  trade_seconds int not null default 720,
+  paused boolean not null default false,
+  paused_remaining int not null default 0,
+  announcement text not null default '',
+  announcement_at timestamptz
 );
+alter table tg_game add column if not exists paused boolean not null default false;
+alter table tg_game add column if not exists paused_remaining int not null default 0;
+alter table tg_game add column if not exists announcement text not null default '';
+alter table tg_game add column if not exists announcement_at timestamptz;
 insert into tg_game (id) values (1) on conflict do nothing;
 create table if not exists tg_groups (
   id int primary key,
@@ -185,7 +193,7 @@ async function authGroup(client, req) {
 /* ================= 데이터 읽기·점수 계산 ================= */
 async function getGame(client) {
   const { rows } = await client.query(
-    'select phase, ends_at, production, autarky_seconds, trade_seconds, now() as now from tg_game where id=1'
+    'select phase, ends_at, production, autarky_seconds, trade_seconds, paused, paused_remaining, announcement, announcement_at, now() as now from tg_game where id=1'
   );
   return rows[0];
 }
@@ -289,6 +297,7 @@ async function state(client, req) {
     game: {
       phase: gm.phase, endsAt: gm.ends_at, production: gm.production,
       autarkySeconds: gm.autarky_seconds, tradeSeconds: gm.trade_seconds,
+      paused: gm.paused, pausedRemaining: gm.paused_remaining, announcement: gm.announcement || '', announcementAt: gm.announcement_at,
     },
     config: publicConfig(all.groups),
     compare,
@@ -341,7 +350,7 @@ async function craft(client, g, b) {
   const p = PRODUCTS[key];
   if (!p) fail(400, '만들 물품을 골라 주세요.');
   const game = await getGame(client);
-  if (!['autarky', 'trade'].includes(game.phase)) fail(403, '지금은 물품을 만들 수 없어요.');
+  if (!['autarky', 'trade'].includes(game.phase) || game.paused) fail(403, game.paused ? '선생님이 게임을 잠시 멈췄어요.' : '지금은 물품을 만들 수 없어요.');
 
   return tx(client, async () => {
     const { rows } = await client.query(
@@ -378,7 +387,7 @@ async function propose(client, g, b) {
   if (len(message) > LIMITS.maxText) fail(400, `무역 제안문은 ${LIMITS.maxText}글자까지 쓸 수 있어요.`);
 
   const game = await getGame(client);
-  if (game.phase !== 'trade') fail(403, '지금은 무역 시간이 아니에요.');
+  if (game.phase !== 'trade' || game.paused) fail(403, game.paused ? '선생님이 게임을 잠시 멈췄어요.' : '지금은 무역 시간이 아니에요.');
 
   return tx(client, async () => {
     const inv = await client.query('select qty from tg_inventory where group_id=$1 and item=$2', [g.id, giveItem]);
@@ -404,7 +413,7 @@ async function respond(client, g, b) {
   if (accept && len(reply) < LIMITS.minReply) fail(400, `수락 답장을 ${LIMITS.minReply}글자 이상 써 주세요.`);
   if (len(reply) > LIMITS.maxText) fail(400, `답장은 ${LIMITS.maxText}글자까지 쓸 수 있어요.`);
   const game = await getGame(client);
-  if (game.phase !== 'trade') fail(403, '지금은 무역 시간이 아니에요.');
+  if (game.phase !== 'trade' || game.paused) fail(403, game.paused ? '선생님이 게임을 잠시 멈췄어요.' : '지금은 무역 시간이 아니에요.');
 
   const result = await tx(client, async () => {
     const tr = await client.query('select * from tg_trades where id=$1 for update', [id]);
@@ -493,7 +502,7 @@ async function teacherAction(client, action, b) {
         }
         await grantProduction(client, production);
         await client.query(
-          "update tg_game set phase='autarky', ends_at = now() + ($1::int * interval '1 second'), production=$2, autarky_seconds=$1, trade_seconds=$3 where id=1",
+          "update tg_game set phase='autarky', ends_at = now() + ($1::int * interval '1 second'), production=$2, autarky_seconds=$1, trade_seconds=$3, paused=false, paused_remaining=0, announcement='', announcement_at=null where id=1",
           [autarky, production, trade]
         );
         return json({ ok: true });
@@ -501,12 +510,11 @@ async function teacherAction(client, action, b) {
     }
     case 'open_trade': {
       return tx(client, async () => {
-        const { rows } = await client.query('select phase, production, trade_seconds from tg_game where id=1 for update');
+        const { rows } = await client.query('select phase, trade_seconds, paused from tg_game where id=1 for update');
         if (rows[0].phase !== 'autarky') fail(409, '자급자족 단계에서만 무역을 열 수 있어요.');
-        await grantProduction(client, rows[0].production);
+        if (rows[0].paused) fail(409, '게임을 재개한 뒤 무역을 열어 주세요.');
         await client.query(
-          "update tg_game set phase='trade', ends_at = now() + ($1::int * interval '1 second') where id=1",
-          [rows[0].trade_seconds]
+          "update tg_game set phase='trade', ends_at = now() + (trade_seconds * interval '1 second'), paused_remaining=0 where id=1"
         );
         return json({ ok: true });
       });
@@ -515,16 +523,46 @@ async function teacherAction(client, action, b) {
       const sec = clampInt(b.seconds, 10, 600, 60);
       const game = await getGame(client);
       if (!['autarky', 'trade'].includes(game.phase)) fail(409, '진행 중일 때만 시간을 늘릴 수 있어요.');
-      await client.query(
-        "update tg_game set ends_at = greatest(coalesce(ends_at, now()), now()) + ($1::int * interval '1 second') where id=1",
-        [sec]
-      );
+      if (game.paused) {
+        await client.query('update tg_game set paused_remaining=paused_remaining+$1 where id=1', [sec]);
+      } else {
+        await client.query(
+          "update tg_game set ends_at = greatest(coalesce(ends_at, now()), now()) + ($1::int * interval '1 second') where id=1",
+          [sec]
+        );
+      }
+      return json({ ok: true });
+    }
+    case 'pause': {
+      return tx(client, async () => {
+        const { rows } = await client.query('select phase, paused, ends_at from tg_game where id=1 for update');
+        const game = rows[0];
+        if (!['autarky', 'trade'].includes(game.phase)) fail(409, '게임 진행 중에만 멈출 수 있어요.');
+        if (game.paused) return json({ ok: true, paused: true });
+        const rem = game.ends_at ? Math.max(0, Math.ceil((new Date(game.ends_at).getTime() - Date.now()) / 1000)) : 0;
+        await client.query('update tg_game set paused=true, paused_remaining=$1, ends_at=null where id=1', [rem]);
+        return json({ ok: true, paused: true });
+      });
+    }
+    case 'resume': {
+      return tx(client, async () => {
+        const { rows } = await client.query('select phase, paused, paused_remaining from tg_game where id=1 for update');
+        const game = rows[0];
+        if (!['autarky', 'trade'].includes(game.phase)) fail(409, '게임 진행 중에만 재개할 수 있어요.');
+        if (!game.paused) return json({ ok: true, paused: false });
+        await client.query("update tg_game set paused=false, ends_at=now() + (paused_remaining * interval '1 second'), paused_remaining=0 where id=1");
+        return json({ ok: true, paused: false });
+      });
+    }
+    case 'announce': {
+      const message = String(b.message ?? '').trim().slice(0, 240);
+      await client.query('update tg_game set announcement=$1, announcement_at=now() where id=1', [message]);
       return json({ ok: true });
     }
     case 'finish': {
       const game = await getGame(client);
       if (!['autarky', 'trade'].includes(game.phase)) fail(409, '진행 중일 때만 끝낼 수 있어요.');
-      await client.query("update tg_game set phase='finished', ends_at=null where id=1");
+      await client.query("update tg_game set phase='finished', ends_at=null, paused=false, paused_remaining=0 where id=1");
       return json({ ok: true });
     }
     case 'reset': {
@@ -533,7 +571,7 @@ async function teacherAction(client, action, b) {
         for (let i = 1; i <= GROUP_COUNT; i++) {
           await client.query('update tg_groups set code=$2, last_seen=null where id=$1', [i, randomCode()]);
         }
-        await client.query("update tg_game set phase='lobby', ends_at=null where id=1");
+        await client.query("update tg_game set phase='lobby', ends_at=null, paused=false, paused_remaining=0, announcement='', announcement_at=null where id=1");
         return json({ ok: true });
       });
     }

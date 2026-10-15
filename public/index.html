@@ -364,7 +364,7 @@ async function doLogin() {
   startApp();
 }
 function logout(auto) {
-  S.session = null; saveSession(); S.st = null; S.shell = null; S.seen = null; S.drafts = {};
+  S.session = null; S.teacherReturn = null; saveSession(); S.st = null; S.shell = null; S.seen = null; S.drafts = {};
   renderLogin();
   if (auto) toast('입장 정보가 맞지 않아서 처음 화면으로 돌아왔어요.', 'warn');
 }
@@ -374,7 +374,7 @@ function logout(auto) {
    ===================================================================== */
 function buildStudentShell() {
   $('#app').innerHTML = `<div class="shell">
-    <header id="hdr" class="topbar"></header>
+    <header id="hdr" class="topbar"></header><div id="studentNotice"></div>
     <main>
       <section id="tab-craft"><div id="craftBanner"></div><div id="craftInv"></div><div id="craftRecipes"></div></section>
       <section id="tab-trade"><div id="trLock"></div><div id="trInv"></div><div id="trInbox"></div><div id="trForm"></div><div id="trOut"></div><div id="trFeed"></div></section>
@@ -400,7 +400,7 @@ function notify(st) {
     });
     if (st.me.bonus > sn.bonus) toast(`🎯 미션 달성! +${st.me.bonus - sn.bonus}점`, 'ok');
     if (sn.phase !== st.game.phase) {
-      const m = { autarky: ['🚫 자급자족이 시작됐어요!', ''], trade: ['🤝 무역이 열렸어요! 재료도 새로 나왔어요.', 'ok'], finished: ['🏁 게임이 끝났어요!', ''] }[st.game.phase];
+      const m = { autarky: ['🚫 자급자족이 시작됐어요!', ''], trade: ['🤝 무역이 열렸어요!', 'ok'], finished: ['🏁 게임이 끝났어요!', ''] }[st.game.phase];
       if (m) toast(m[0], m[1]);
       if (st.game.phase === 'finished') S.tab = 'board';
       if (st.game.phase === 'trade' && sn.phase === 'autarky') S.tab = 'trade';
@@ -417,6 +417,8 @@ function renderStudent() {
   if (S.shell !== 'student') buildStudentShell();
   notify(st);
   showTab();
+  const notice = $('#studentNotice');
+  if (notice) notice.innerHTML = `${st.game.paused ? '<div class="banner stop">⏸️ 선생님이 게임을 잠시 멈췄어요. 안내를 기다려 주세요.</div>' : ''}${st.game.announcement ? `<div class="banner go">📢 선생님 공지: ${esc(st.game.announcement)}</div>` : ''}`;
 
   mount('hdr', { id: me.id, total: me.total, phase, off: S.offline }, () => `
     ${flagEl(me.id, true)}
@@ -424,7 +426,7 @@ function renderStudent() {
     <span class="sp"></span>
     ${S.offline ? '<span class="offline">연결 확인 중…</span>' : ''}
     <div style="text-align:center"><span class="pill">${PHASE[phase]}</span><div class="timer" data-timer>--:--</div></div>
-    <div class="score">${me.total}<small>점</small></div>`);
+    <div class="score">${me.total}<small>점</small></div>${S.teacherReturn ? '<button class="btn sea sm" data-act="back-teacher">교사 화면으로</button>' : ''}`);
 
   mount('nav', { tab: S.tab, n: st.incoming.length }, () => [
     ['craft', '🎒', '만들기'], ['trade', '🤝', '무역'], ['mission', '🎯', '미션'], ['board', '🏆', '순위'],
@@ -440,7 +442,7 @@ function renderStudent() {
   }[phase]));
   mount('craftInv', { inv: me.inventory }, () => `<section class="card"><h3>🎒 우리 모둠 창고</h3>${invTiles(me.inventory, me.material)}</section>`);
   mount('craftRecipes', { inv: me.inventory, phase, crafts: me.crafts }, () => {
-    const canPlay = phase === 'autarky' || phase === 'trade';
+    const canPlay = !st.game.paused && (phase === 'autarky' || phase === 'trade');
     return [1, 2, 3].map((lv) => {
       const list = Object.entries(S.cfg.products).filter(([, p]) => p.level === lv);
       return `<div class="lvhead"><h3>난이도 ${lv} · ${esc(S.cfg.levels[lv].name)}</h3><span class="pts">${S.cfg.levels[lv].points}점</span></div>
@@ -459,8 +461,8 @@ function renderStudent() {
   });
 
   /* --- 무역 탭 --- */
-  mount('trLock', phase, () => phase === 'trade' ? '' : `<div class="banner ${phase === 'autarky' ? 'stop' : ''}">${{
-    lobby: '⏳ 아직 무역 시간이 아니에요.', autarky: '🚫 지금은 무역 금지 시간이에요. 선생님이 무역을 열어 주실 때까지 기다려요.', finished: '🏁 무역이 끝났어요. 아래에서 오고 간 편지를 볼 수 있어요.',
+  mount('trLock', { phase, paused: st.game.paused }, () => phase === 'trade' && !st.game.paused ? '' : `<div class="banner ${phase === 'autarky' ? 'stop' : ''}">${{
+    lobby: '⏳ 아직 무역 시간이 아니에요.', autarky: '🚫 지금은 무역 금지 시간이에요. 선생님이 무역을 열어 주실 때까지 기다려요.', finished: '🏁 무역이 끝났어요. 아래에서 오고 간 편지를 볼 수 있어요.', trade: '⏸️ 선생님이 게임을 잠시 멈췄어요.',
   }[phase]}</div>`);
   mount('trInv', { inv: me.inventory }, () => `<section class="card"><h3>🎒 지금 우리 창고</h3>${invTiles(me.inventory, me.material)}</section>`);
   mount('trInbox', { phase, inc: st.incoming.map((t) => t.id), inv: me.inventory }, () => {
@@ -564,6 +566,7 @@ function updateCount() {
 function buildTeacherShell() {
   $('#app').innerHTML = `<div class="tshell">
     <header id="tHdr" class="thead"></header>
+    <section class="card" style="margin-top:12px"><h3>📣 학생 화면 관리</h3><div class="row"><label class="f" for="previewGroup">학생 화면으로 보기</label><select id="previewGroup">${[1,2,3,4,5,6].map(i=>`<option value="${i}">${i}모둠</option>`).join('')}</select><button class="btn sea" data-act="view-student">학생 화면으로 이동</button></div><div class="row" style="margin-top:12px"><input id="announceText" maxlength="240" placeholder="학생 화면에 보낼 공지 (최대 240자)"><button class="btn go" data-act="t-announce">공지 보내기</button><button class="btn sm" data-act="t-clear-announce">공지 지우기</button></div></section>
     <section class="card" style="margin-top:20px"><h3>🔑 모둠 입장 코드</h3><div id="tCodes"></div></section>
     <div id="tFinal"></div>
     <div class="tgrid">
@@ -584,11 +587,11 @@ function renderTeacher() {
         <label>자급자족(분)<input id="setAut" type="number" min="0" max="30" step="0.5" data-draft="aut" value="2"></label>
         <label>무역(분)<input id="setTrd" type="number" min="1" max="60" step="0.5" data-draft="trd" value="12"></label>
         <button class="btn go big" data-act="t-start">▶ 게임 시작</button></div>`,
-      autarky: `<button class="btn go big" data-act="t-open">🤝 무역 열기</button><button class="btn sm" data-act="t-extend">+1분</button><button class="btn no sm" data-act="t-finish">🏁 끝내기</button>`,
-      trade: `<button class="btn sm" data-act="t-extend">+1분</button><button class="btn big" data-act="t-finish">🏁 게임 끝내기</button>`,
+      autarky: `${st.game.paused ? '<button class="btn go big" data-act="t-resume">▶ 재개</button>' : '<button class="btn sea big" data-act="t-pause">⏸ 일시 정지</button><button class="btn go big" data-act="t-open">🤝 무역 열기</button>'}<button class="btn sm" data-act="t-extend">+1분</button><button class="btn no sm" data-act="t-finish">🏁 끝내기</button>`,
+      trade: `${st.game.paused ? '<button class="btn go big" data-act="t-resume">▶ 재개</button>' : '<button class="btn sea big" data-act="t-pause">⏸ 일시 정지</button>'}<button class="btn sm" data-act="t-extend">+1분</button><button class="btn big" data-act="t-finish">🏁 게임 끝내기</button>`,
       finished: `<button class="btn sea big" data-act="t-reset">🔄 새 게임 준비</button>`,
     }[phase];
-    return `<h2>🧭 교사 화면</h2><span class="ph">${PHASE[phase]}</span><span class="timer" data-timer>--:--</span><span class="sp"></span>
+    return `<h2>🧭 교사 화면</h2><span class="ph">${PHASE[phase]}${st.game.paused ? ' · 일시 정지' : ''}</span><span class="timer" data-timer>--:--</span><span class="sp"></span>
       <div class="row">${ctrl}${phase !== 'lobby' && phase !== 'finished' ? '<button class="btn no sm" data-act="t-reset">초기화</button>' : ''}</div>`;
   }, () => { /* 입력값 기본값 복원은 mount가 처리 */ });
 
@@ -688,9 +691,19 @@ const ACTIONS = {
     toast('게임을 시작했어요! 자급자족 시간이에요.', 'ok'); await poll();
   }),
   't-open': () => guarded(async () => {
-    if (!confirm('무역을 열까요? 모둠마다 재료가 한 번 더 지급돼요.')) return;
+    if (!confirm('무역을 열까요? 추가 재료는 지급되지 않아요.')) return;
     await tpost('open_trade'); toast('무역을 열었어요.', 'ok'); await poll();
   }),
+  't-pause': () => guarded(async () => { await tpost('pause'); toast('게임을 일시 정지했어요.'); await poll(); }),
+  't-resume': () => guarded(async () => { await tpost('resume'); toast('게임을 재개했어요.'); await poll(); }),
+  't-announce': () => guarded(async () => { const message = ($('#announceText')?.value || '').trim(); if (!message) throw new Error('학생에게 보낼 공지를 입력해 주세요.'); await tpost('announce', { message }); toast('학생 화면에 공지를 보냈어요.', 'ok'); await poll(); }),
+  't-clear-announce': () => guarded(async () => { await tpost('announce', { message: '' }); toast('공지를 지웠어요.'); await poll(); }),
+  'view-student': () => guarded(async () => {
+    const gid = Number($('#previewGroup')?.value || 1); const g = S.st.groups.find(x => x.id === gid);
+    if (!g) throw new Error('모둠 정보를 찾을 수 없어요.');
+    S.teacherReturn = { ...S.session }; S.session = { role: 'group', group: gid, code: g.code }; S.tab = 'craft'; S.seen = null; S.sigs = {}; await poll();
+  }),
+  'back-teacher': () => guarded(async () => { if (!S.teacherReturn) return; S.session = S.teacherReturn; S.teacherReturn = null; S.tab = 'craft'; S.seen = null; S.sigs = {}; await poll(); }),
   't-extend': () => guarded(async () => { await tpost('extend', { seconds: 60 }); toast('1분을 늘렸어요.'); await poll(); }),
   't-finish': () => guarded(async () => {
     if (!confirm('게임을 끝내고 결과를 보여 줄까요?')) return;
@@ -734,7 +747,7 @@ function schedule() {
 function tick() {
   const g = S.st?.game;
   if (!g) return;
-  const left = g.endsAt ? Math.max(0, Math.round((Date.parse(g.endsAt) - (Date.now() + S.skew)) / 1000)) : null;
+  const left = g.paused ? Number(g.pausedRemaining || 0) : (g.endsAt ? Math.max(0, Math.round((Date.parse(g.endsAt) - (Date.now() + S.skew)) / 1000)) : null);
   document.querySelectorAll('[data-timer]').forEach((el) => {
     el.textContent = left === null ? '--:--' : fmtTime(left);
     el.classList.toggle('low', left !== null && left > 0 && left <= 30);
