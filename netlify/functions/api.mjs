@@ -14,12 +14,11 @@ const RAW = {
   cotton: { name: '면화',   emoji: '☁️' },
   food:   { name: '식량',   emoji: '🌾' },
   oil:    { name: '석유',   emoji: '🛢️' },
-  gold:   { name: '금',     emoji: '🪙' },
 };
 const RAW_KEYS = Object.keys(RAW);
-const MAX_GROUP_COUNT = 12;
-// 같은 특산품을 두 모둠씩 공유한다: 1·2 목재, 3·4 철광석, 5·6 면화, 7·8 식량, 9·10 석유, 11·12 금
-const GROUP_MATERIAL = ['wood', 'wood', 'iron', 'iron', 'cotton', 'cotton', 'food', 'food', 'oil', 'oil', 'gold', 'gold'];
+const MAX_GROUP_COUNT = 10;
+// 10개 모둠은 특산품 5종을 두 모둠씩 공유한다: 1·2 목재, 3·4 철광석, 5·6 면화, 7·8 식량, 9·10 석유
+const GROUP_MATERIAL = ['wood', 'wood', 'iron', 'iron', 'cotton', 'cotton', 'food', 'food', 'oil', 'oil'];
 
 const LEVELS = {
   1: { name: '기본 가공품', points: '30~50' },
@@ -31,12 +30,12 @@ const LEVELS = {
 const PRODUCTS = {
   cart:    { name: '건설 자재 묶음',   emoji: '🏗️', level: 1, points: 30, recipe: { wood: 1, iron: 1 } },
   clothes: { name: '생활용품 세트',    emoji: '👕', level: 1, points: 40, recipe: { cotton: 1, food: 1, wood: 1 } },
-  fuel:    { name: '산업용 장비',      emoji: '⚙️', level: 1, points: 50, recipe: { oil: 1, iron: 1, gold: 1, wood: 1 } },
-  smart:   { name: '스마트 기기',      emoji: '📱', level: 2, points: 100, recipe: { cart: 1, iron: 1, gold: 1 } },
-  fashion: { name: '고급 의류',        emoji: '🧥', level: 2, points: 100, recipe: { clothes: 1, cotton: 1, gold: 1 } },
+  fuel:    { name: '산업용 장비',      emoji: '⚙️', level: 1, points: 50, recipe: { oil: 1, iron: 1, cotton: 1, food: 1 } },
+  smart:   { name: '스마트 기기',      emoji: '📱', level: 2, points: 100, recipe: { cart: 1, iron: 1, oil: 1 } },
+  fashion: { name: '고급 의류',        emoji: '🧥', level: 2, points: 100, recipe: { clothes: 1, cotton: 1, wood: 1 } },
   energy:  { name: '고효율 에너지 장치', emoji: '🔋', level: 2, points: 100, recipe: { fuel: 1, oil: 1, food: 1 } },
   city:    { name: '첨단 도시 모형',    emoji: '🚀', level: 3, points: 200, recipe: { smart: 1, iron: 1, oil: 1, wood: 1 } },
-  civ:     { name: '지속 가능한 미래 세트', emoji: '👑', level: 3, points: 200, recipe: { fashion: 1, cotton: 1, gold: 1, food: 1 } },
+  civ:     { name: '지속 가능한 미래 세트', emoji: '👑', level: 3, points: 200, recipe: { fashion: 1, cotton: 1, food: 1, oil: 1 } },
 };
 const ITEM_KEYS = [...RAW_KEYS, ...Object.keys(PRODUCTS)];
 const itemInfo = (k) => RAW[k] || PRODUCTS[k] || { name: k, emoji: '📦' };
@@ -47,6 +46,7 @@ const MISSIONS = {
   lv3:       { title: '도전자',       emoji: '🚀', desc: '난이도 3 최종 완성품 1개 만들기',           bonus: 50, target: 1 },
   allLevels: { title: '전 단계 정복', emoji: '🏅', desc: '난이도 1·2·3 물품을 각각 1개 이상 만들기', bonus: 60, target: 3 },
   lv2x2:     { title: '기술자',       emoji: '🔧', desc: '난이도 2 심화 가공품 2개 만들기',           bonus: 40, target: 2 },
+  lv1x1:     { title: '첫걸음 미션',  emoji: '🌱', desc: '기본 가공품 1개 만들기',                 bonus: 10, target: 1 },
   lv1x3:     { title: '기초 튼튼',    emoji: '🧱', desc: '난이도 1 기본 가공품 3개 만들기',           bonus: 30, target: 3 },
 };
 
@@ -101,13 +101,13 @@ create table if not exists tg_game (
   paused_remaining int not null default 0,
   announcement text not null default '',
   announcement_at timestamptz,
-  group_count int not null default 12
+  group_count int not null default 10
 );
 alter table tg_game add column if not exists paused boolean not null default false;
 alter table tg_game add column if not exists paused_remaining int not null default 0;
 alter table tg_game add column if not exists announcement text not null default '';
 alter table tg_game add column if not exists announcement_at timestamptz;
-alter table tg_game add column if not exists group_count int not null default 12;
+alter table tg_game add column if not exists group_count int not null default 10;
 insert into tg_game (id) values (1) on conflict do nothing;
 create table if not exists tg_groups (
   id int primary key,
@@ -115,8 +115,22 @@ create table if not exists tg_groups (
   material text not null,
   code text not null,
   mission text,
+  mission_count int not null default 0,
+  mission_bonus int not null default 0,
+  mission_start_lv1 int not null default 0,
+  mission_start_lv2 int not null default 0,
+  mission_start_lv3 int not null default 0,
+  mission_start_partners int not null default 0,
+  mission_start_accepts int not null default 0,
   last_seen timestamptz
 );
+alter table tg_groups add column if not exists mission_count int not null default 0;
+alter table tg_groups add column if not exists mission_bonus int not null default 0;
+alter table tg_groups add column if not exists mission_start_lv1 int not null default 0;
+alter table tg_groups add column if not exists mission_start_lv2 int not null default 0;
+alter table tg_groups add column if not exists mission_start_lv3 int not null default 0;
+alter table tg_groups add column if not exists mission_start_partners int not null default 0;
+alter table tg_groups add column if not exists mission_start_accepts int not null default 0;
 create table if not exists tg_inventory (
   group_id int not null references tg_groups(id) on delete cascade,
   item text not null,
@@ -156,7 +170,7 @@ async function ensureSchema(client) {
     await new Promise((r) => setTimeout(r, 300));
     await client.query(SCHEMA_SQL);
   }
-  // 12개 모둠을 항상 보장하고 특산품 배정을 최신 규칙으로 맞춘다.
+  // 10개 모둠을 항상 보장하고 특산품 배정을 최신 규칙으로 맞춘다.
   // 기존 코드와 재고는 보존하며, 누락된 모둠/재고 행만 생성한다.
   for (let i = 1; i <= MAX_GROUP_COUNT; i++) {
     await client.query(
@@ -170,6 +184,7 @@ async function ensureSchema(client) {
       );
     }
   }
+  await client.query('update tg_game set group_count=10 where id=1');
   schemaReady = true;
 }
 
@@ -216,15 +231,16 @@ function missionInfo(key, ctx) {
   if (!m) return null;
   let progress = 0;
   switch (key) {
-    case 'partners3': progress = ctx.partners; break;
-    case 'accept2':   progress = ctx.accepts; break;
-    case 'lv3':       progress = ctx.lv[3]; break;
-    case 'allLevels': progress = [1, 2, 3].filter((l) => ctx.lv[l] > 0).length; break;
-    case 'lv2x2':     progress = ctx.lv[2]; break;
-    case 'lv1x3':     progress = ctx.lv[1]; break;
+    case 'partners3': progress = Math.max(0, ctx.partners - ctx.startPartners); break;
+    case 'accept2':   progress = Math.max(0, ctx.accepts - ctx.startAccepts); break;
+    case 'lv3':       progress = Math.max(0, ctx.lv[3] - ctx.startLv[3]); break;
+    case 'allLevels': progress = [1, 2, 3].filter((l) => ctx.lv[l] > ctx.startLv[l]).length; break;
+    case 'lv2x2':     progress = Math.max(0, ctx.lv[2] - ctx.startLv[2]); break;
+    case 'lv1x1':     progress = Math.max(0, ctx.lv[1] - ctx.startLv[1]); break;
+    case 'lv1x3':     progress = Math.max(0, ctx.lv[1] - ctx.startLv[1]); break;
   }
   return {
-    key, title: m.title, emoji: m.emoji, desc: m.desc, bonus: m.bonus, target: m.target,
+    key, title: m.title, emoji: m.emoji, desc: m.desc, bonus: ((ctx.missionCount || 0) + 1) * 10, target: m.target,
     progress: Math.min(progress, m.target), done: progress >= m.target,
   };
 }
@@ -253,16 +269,39 @@ function computeStats(all) {
     const mine = accepted.filter((t) => t.from_group === g.id || t.to_group === g.id);
     const partners = new Set(mine.map((t) => (t.from_group === g.id ? t.to_group : t.from_group)));
     const accepts = accepted.filter((t) => t.to_group === g.id).length;
-    const mission = g.mission ? missionInfo(g.mission, { lv, partners: partners.size, accepts }) : null;
-    const bonus = mission && mission.done ? mission.bonus : 0;
+    const startLv = { 1: g.mission_start_lv1 || 0, 2: g.mission_start_lv2 || 0, 3: g.mission_start_lv3 || 0 };
+    const mission = g.mission ? missionInfo(g.mission, { lv, partners: partners.size, accepts, missionCount: g.mission_count || 0, startLv, startPartners: g.mission_start_partners || 0, startAccepts: g.mission_start_accepts || 0 }) : null;
+    const bonus = (g.mission_bonus || 0) + (mission && mission.done ? mission.bonus : 0);
 
     out[g.id] = {
       id: g.id, name: g.name, material: g.material, inventory, crafts,
       craftScore, autarkyScore, tradeScore, bonus, total: craftScore + bonus,
-      tradeCount: mine.length, mission,
+      tradeCount: mine.length, mission, missionCount: g.mission_count || 0, levelCounts: lv, partnersCount: partners.size, acceptCount: accepts,
     };
   }
   return out;
+}
+
+// 미션 달성 시 보상을 누적하고 다음 미션을 자동 배정한다. 첫 미션은 쉬운 기본 가공품 1개 만들기이며, 이후 보상은 10점씩 증가한다.
+async function advanceCompletedMissions(client) {
+  await tx(client, async () => {
+    await client.query('select id from tg_groups where id <= 10 order by id for update');
+    const all = await loadAll(client);
+    const stats = computeStats(all);
+    for (const group of all.groups) {
+      const stat = stats[group.id];
+      if (!stat?.mission?.done) continue;
+      const reward = stat.mission.bonus;
+      const nextCount = (group.mission_count || 0) + 1;
+      const pool = Object.keys(MISSIONS).filter((key) => key !== 'lv1x1' && key !== group.mission);
+      const nextMission = pool[randomInt(0, pool.length)];
+      const levels = stat.levelCounts || { 1: 0, 2: 0, 3: 0 };
+      await client.query(
+        'update tg_groups set mission=$2, mission_count=$3, mission_bonus=mission_bonus+$4, mission_start_lv1=$5, mission_start_lv2=$6, mission_start_lv3=$7, mission_start_partners=$8, mission_start_accepts=$9 where id=$1',
+        [group.id, nextMission, nextCount, reward, levels[1], levels[2], levels[3], stat.partnersCount || 0, stat.acceptCount || 0]
+      );
+    }
+  });
 }
 
 const tradeOut = (t) => ({
@@ -288,6 +327,7 @@ async function state(client, req) {
     await client.query('update tg_groups set last_seen=now() where id=$1', [g.id]);
   }
 
+  await advanceCompletedMissions(client);
   const all = await loadAll(client);
   const stats = computeStats(all);
   const ranked = Object.values(stats).sort((a, b) => b.total - a.total || a.id - b.id);
@@ -484,7 +524,7 @@ async function wipe(client) {
   await client.query('delete from tg_trades');
   await client.query('delete from tg_crafts');
   await client.query('update tg_inventory set qty=0');
-  await client.query('update tg_groups set mission=null');
+  await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0');
 }
 // 게임 시작 시 모둠마다 특산품 10개와, 서로 다른 보조 자원 2종(3개·2개)을 한 번만 지급한다.
 async function grantInitialResources(client) {
@@ -517,14 +557,13 @@ async function teacherAction(client, action, b) {
         const currentGame = await getGame(client);
         if (currentGame.phase === 'finished') await wipe(client);
         else { await client.query('delete from tg_trades'); await client.query('delete from tg_crafts'); await client.query('update tg_groups set mission=null'); }
-        const groupCount = clampInt(b.groupCount, 2, MAX_GROUP_COUNT, currentGame.group_count || 12);
-        await client.query('update tg_game set group_count=$1 where id=1', [groupCount]);
+        const groupCount = 10;
+        await client.query('update tg_game set group_count=10 where id=1');
         await client.query('delete from tg_trades where from_group > $1 or to_group > $1', [groupCount]);
         await client.query('delete from tg_crafts where group_id > $1', [groupCount]);
         await client.query('update tg_inventory set qty=0 where group_id > $1', [groupCount]);
-        const keys = shuffle(Object.keys(MISSIONS));
         for (let i = 0; i < groupCount; i++) {
-          await client.query('update tg_groups set mission=$2 where id=$1', [i + 1, keys[i % keys.length]]);
+          await client.query('update tg_groups set mission=$2, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0 where id=$1', [i + 1, 'lv1x1']);
         }
         await grantInitialResources(client);
         await client.query(
@@ -592,15 +631,15 @@ async function teacherAction(client, action, b) {
       return json({ ok: true });
     }
     case 'set_group_count': {
-      const groupCount = clampInt(b.groupCount, 2, MAX_GROUP_COUNT, 12);
+      const groupCount = 10;
       return tx(client, async () => {
         const game = await getGame(client);
         if (game.phase !== 'lobby') fail(409, '모둠 개수는 게임 시작 전에만 바꿀 수 있어요.');
-        await client.query('update tg_game set group_count=$1 where id=1', [groupCount]);
+        await client.query('update tg_game set group_count=10 where id=1');
         await client.query('delete from tg_trades where from_group > $1 or to_group > $1', [groupCount]);
         await client.query('delete from tg_crafts where group_id > $1', [groupCount]);
         await client.query('update tg_inventory set qty=0 where group_id > $1', [groupCount]);
-        return json({ ok: true, groupCount });
+        return json({ ok: true, groupCount: 10 });
       });
     }
     case 'announce': {
@@ -620,7 +659,7 @@ async function teacherAction(client, action, b) {
         for (let i = 1; i <= MAX_GROUP_COUNT; i++) {
           await client.query('update tg_groups set code=$2, last_seen=null where id=$1', [i, randomCode()]);
         }
-        await client.query("update tg_game set phase='lobby', ends_at=null, paused=false, paused_remaining=0, announcement='', announcement_at=null where id=1");
+        await client.query("update tg_game set phase='lobby', group_count=10, ends_at=null, paused=false, paused_remaining=0, announcement='', announcement_at=null where id=1");
         return json({ ok: true });
       });
     }

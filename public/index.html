@@ -200,7 +200,7 @@ const PHASE = {
   lobby: '⏳ 시작 전', autarky: '🚫 자급자족 시간', trade: '🤝 무역 시간', finished: '🏁 게임 끝',
 };
 const STATUS = { pending: '⏳ 기다리는 중', accepted: '✅ 무역 성공', rejected: '❌ 거절됨', cancelled: '🚫 취소됨' };
-let LOGIN_GROUP_COUNT = 12;
+let LOGIN_GROUP_COUNT = 10;
 
 const S = {
   session: null, st: null, cfg: null, skew: 0, offline: false,
@@ -333,7 +333,7 @@ function renderLoginBody() {
   if (S.loginRole === 'group') {
     $('#loginBody').innerHTML = `
       <label class="f">우리 모둠을 골라요</label>
-      <div class="gpick">${Array.from({length: 12}, (_, i) => i + 1).map((i) => `
+      <div class="gpick">${Array.from({length: LOGIN_GROUP_COUNT}, (_, i) => i + 1).map((i) => `
         <button type="button" data-act="pick-login" data-g="${i}" class="${S.loginGroup === i ? 'on' : ''}">${flagEl(i, true)}<span>${i}모둠</span></button>`).join('')}</div>
       <label class="f" for="loginCode">입장 코드 (선생님이 알려 줘요)</label>
       <input id="loginCode" type="tel" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="숫자 4자리">
@@ -523,13 +523,13 @@ function renderStudent() {
   /* --- 미션 탭 --- */
   mount('missionCard', { m: me.mission }, () => {
     const m = me.mission;
-    if (!m) return `<section class="card mission"><div class="me">🎯</div><h3>미션 카드</h3><p>게임이 시작되면 우리 모둠의 미션 카드가 나와요.</p></section>`;
+    if (!m) return `<section class="card mission"><div class="me">🎯</div><h3>미션 카드</h3><p>게임이 시작되면 쉬운 첫 미션부터 시작해요. 달성할 때마다 다음 미션이 자동으로 나와요.</p></section>`;
     return `<section class="card mission">${m.done ? '<span class="done">달성!</span>' : ''}
       <div class="me">${m.emoji}</div><h3>${esc(m.title)}</h3><p style="font-size:1.1rem">${esc(m.desc)}</p>
       <p><span class="bonus">보너스 +${m.bonus}점</span></p>
       <div class="bar" style="margin:12px auto;max-width:320px"><i style="width:${Math.round((m.progress / m.target) * 100)}%;background:${m.done ? '#2fbf71' : 'var(--sea)'}"></i></div>
       <p><b>${m.progress} / ${m.target}</b></p>
-      <p class="small">미션 카드는 우리 모둠만 알고 있어요. 달성하면 점수가 자동으로 더해져요.</p></section>`;
+      <p class="small">미션을 달성하면 보너스가 누적되고 다음 미션이 자동으로 나와요. 미션 보상은 회차마다 10점씩 높아져요.</p></section>`;
   });
   mount('myCrafts', { c: me.crafts }, () => {
     const list = Object.entries(me.crafts);
@@ -598,8 +598,7 @@ function renderTeacher() {
   mount('tHdr', { phase, p: st.game.production }, () => {
     const ctrl = {
       lobby: `<div class="settings">
-        <div class="hint" style="padding:8px 0;min-width:190px"><b>🎁 시작 자원 지급</b><br>특산품 10개 + 무작위 보조 자원 3개·2개</div>
-        <label>모둠 개수<select id="setGroupCount" data-draft="groupCount">${Array.from({length:11},(_,i)=>i+2).map(n=>`<option value="${n}" ${n===st.game.groupCount?'selected':''}>${n}개 모둠</option>`).join('')}</select></label><button class="btn sea" data-act="t-set-groups">모둠 개수 적용</button>
+        <div class="hint" style="padding:8px 0;min-width:190px"><b>🎁 시작 자원 지급</b><br>10개 모둠 고정 · 특산품 10개 + 무작위 보조 자원 3개·2개</div>
         <label>자급자족(분)<input id="setAut" type="number" min="0" max="30" step="0.5" data-draft="aut" value="2"></label>
         <label>무역(분)<input id="setTrd" type="number" min="1" max="60" step="0.5" data-draft="trd" value="12"></label>
         <button class="btn go big" data-act="t-start">▶ 게임 시작</button></div>`,
@@ -635,7 +634,7 @@ function renderTeacher() {
       <section class="card"><h3>💬 함께 이야기해 봐요</h3>
         <ol><li>자급자족 시간에는 왜 아무도 점수를 내지 못했을까요?</li>
         <li>무역을 하자 모든 모둠에게 이득이 생긴 이유는 무엇일까요?</li>
-        <li>금과 목재를 가진 모둠은 왜 협상에서 유리했을까요? (희소성)</li>
+        <li>목재와 석유처럼 서로 다른 특산품을 가진 모둠은 왜 무역에서 유리했을까요? (희소성)</li>
         <li>가장 설득력 있었던 무역 제안문은 무엇이었나요? 오른쪽 편지함에서 함께 읽어 봐요.</li></ol></section>`;
   });
 
@@ -705,12 +704,11 @@ const ACTIONS = {
 
   't-start': () => guarded(async () => {
     const num = (k, d) => { const v = Number(S.drafts[k]); return Number.isFinite(v) && S.drafts[k] !== '' && S.drafts[k] !== undefined ? v : d; };
-    await tpost('start', { production: 20, groupCount: Number($('#setGroupCount')?.value || st.game.groupCount || 12), autarkySeconds: Math.round(num('aut', 2) * 60), tradeSeconds: Math.round(num('trd', 12) * 60) });
+    await tpost('start', { production: 20, groupCount: 10, autarkySeconds: Math.round(num('aut', 2) * 60), tradeSeconds: Math.round(num('trd', 12) * 60) });
     toast('게임을 시작했어요! 특산품 10개와 무작위 보조 자원 3개·2개를 지급했어요.', 'ok'); await poll();
   }),
   'teacher-tab': (b) => { S.teacherTab = b.dataset.tab; S.sigs = {}; renderTeacher(); },
-  't-set-groups': () => guarded(async () => { const groupCount = Number($('#setGroupCount')?.value || 12); await tpost('set_group_count', { groupCount }); toast(`${groupCount}개 모둠으로 설정했어요.`, 'ok'); await poll(); }),
-  't-grant': () => guarded(async () => { const groupId = Number($('#grantGroup')?.value); const item = $('#grantItem')?.value; const qty = Number($('#grantQty')?.value); await tpost('grant_resource', { groupId, item, qty }); toast(`자원을 지급했어요.`, 'ok'); await poll(); }),
+    't-grant': () => guarded(async () => { const groupId = Number($('#grantGroup')?.value); const item = $('#grantItem')?.value; const qty = Number($('#grantQty')?.value); await tpost('grant_resource', { groupId, item, qty }); toast(`자원을 지급했어요.`, 'ok'); await poll(); }),
   't-open': () => guarded(async () => {
     if (!confirm('무역을 열까요? 추가 재료는 지급되지 않아요.')) return;
     await tpost('open_trade'); toast('무역을 열었어요.', 'ok'); await poll();
