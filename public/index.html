@@ -567,6 +567,7 @@ function buildTeacherShell() {
   $('#app').innerHTML = `<div class="tshell">
     <header id="tHdr" class="thead"></header>
     <section class="card" style="margin-top:12px"><h3>📣 학생 화면 관리</h3><div class="row"><label class="f" for="previewGroup">학생 화면으로 보기</label><select id="previewGroup">${[1,2,3,4,5,6].map(i=>`<option value="${i}">${i}모둠</option>`).join('')}</select><button class="btn sea" data-act="view-student">학생 화면으로 이동</button></div><div class="row" style="margin-top:12px"><input id="announceText" maxlength="240" placeholder="학생 화면에 보낼 공지 (최대 240자)"><button class="btn go" data-act="t-announce">공지 보내기</button><button class="btn sm" data-act="t-clear-announce">공지 지우기</button></div></section>
+    <section class="card" style="margin-top:12px;border:1px solid #d97757"><h3>🔄 놀이 전체 초기화</h3><p class="hint">놀이가 끝난 뒤 다음 수업을 준비할 때 사용하세요. 모든 모둠의 자원·제작 기록·무역 제안·점수를 지우고, 입장 코드를 새로 만들며, 게임을 대기 상태로 되돌립니다. 초기화 후에는 게임 시작을 눌러 자원을 새로 지급할 수 있습니다.</p><button class="btn no" data-act="t-reset">놀이 전체 초기화</button></section>
     <section class="card" style="margin-top:20px"><h3>🔑 모둠 입장 코드</h3><div id="tCodes"></div></section>
     <div id="tFinal"></div>
     <div class="tgrid">
@@ -592,7 +593,7 @@ function renderTeacher() {
       finished: `<button class="btn sea big" data-act="t-reset">🔄 새 게임 준비</button>`,
     }[phase];
     return `<h2>🧭 교사 화면</h2><span class="ph">${PHASE[phase]}${st.game.paused ? ' · 일시 정지' : ''}</span><span class="timer" data-timer>--:--</span><span class="sp"></span>
-      <div class="row">${ctrl}${phase !== 'lobby' && phase !== 'finished' ? '<button class="btn no sm" data-act="t-reset">초기화</button>' : ''}</div>`;
+      <div class="row">${ctrl}</div>`;
   }, () => { /* 입력값 기본값 복원은 mount가 처리 */ });
 
   mount('tCodes', st.groups.map((g) => [g.id, g.code, g.online]), () => `<div class="codes">${st.groups.map((g) => `
@@ -710,8 +711,8 @@ const ACTIONS = {
     await tpost('finish'); await poll();
   }),
   't-reset': () => guarded(async () => {
-    if (!confirm('모든 기록이 지워지고 입장 코드가 새로 만들어져요. 계속할까요?')) return;
-    S.drafts = {}; await tpost('reset'); toast('처음 상태로 돌렸어요.'); await poll();
+    if (!confirm('놀이를 전체 초기화할까요?\n\n모든 모둠의 자원, 제작 기록, 무역 제안, 점수와 미션이 초기화되고 입장 코드가 새로 만들어집니다. 이 작업은 되돌릴 수 없습니다.')) return;
+    S.drafts = {}; await tpost('reset'); S.teacherReturn = null; toast('놀이를 초기 상태로 되돌렸어요.'); await poll();
   }),
 };
 document.addEventListener('click', (e) => {
