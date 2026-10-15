@@ -125,14 +125,14 @@ textarea{resize:vertical;min-height:84px}
 .market-group{border:2px solid var(--ink);border-radius:10px;background:#fff;padding:8px 4px;cursor:pointer;text-align:center;font-family:var(--display);min-width:0}
 .market-group.on{background:var(--sand);box-shadow:0 3px 0 var(--ink);transform:translateY(-1px)}
 .market-group small{display:block;font-size:.72rem;line-height:1.2;overflow-wrap:anywhere}
-.market-stock{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px;margin-top:10px}
+.market-stock{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-top:10px}
 .market-stock .tile{min-height:0;padding:8px 5px;gap:2px}
 .market-stock .tile .em{font-size:1.2rem}.market-stock .tile .n{font-size:1.05rem}
 .shop-panel{background:#fff9e9;border:2px dashed #9a6700;border-radius:12px;padding:12px;margin-top:10px}
 .shop-form{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:end}
 .shop-form label{display:block;font-weight:700;font-size:.9rem}
 .shop-form select{width:100%;min-width:0;margin-top:4px;padding:9px;border:2px solid var(--ink);border-radius:9px;background:white}
-@media(max-width:600px){.market-groups{grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.market-group{font-size:.9rem;padding:7px 2px}.market-group small{font-size:.65rem}.shop-form{grid-template-columns:1fr}.shop-form .swap-label{text-align:center;padding:0}}
+@media(max-width:600px){.market-groups{grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.market-group{font-size:.9rem;padding:7px 2px}.market-group small{font-size:.65rem}.market-stock{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.market-stock .tile .nm{font-size:.7rem}.shop-form{grid-template-columns:1fr}.shop-form .swap-label{text-align:center;padding:0}}
 .example{background:#eef6ff;border:2px dashed #2563eb;border-radius:10px;padding:8px 12px;font-size:.9rem;margin:8px 0}
 .cnt{font-size:.85rem;color:var(--mute);text-align:right}
 .cnt.ok{color:var(--ok);font-weight:700}
@@ -444,7 +444,7 @@ function buildStudentShell() {
     <header id="hdr" class="topbar"></header><div id="studentNotice"></div>
     <main>
       <section id="tab-craft"><div id="craftBanner"></div><div id="craftInv"></div><div id="craftRecipes"></div></section>
-      <section id="tab-trade"><div id="trLock"></div><div id="trInv"></div><div id="trMarket"></div><div id="trShop"></div><div id="trInbox"></div><div id="trForm"></div><div id="trOut"></div><div id="trFeed"></div></section>
+      <section id="tab-trade"><div id="trLock"></div><div id="trInv"></div><div id="trMarket"></div><div id="trShop"></div><div id="trForm"></div><div id="trInbox"></div><div id="trOut"></div><div id="trFeed"></div></section>
       <section id="tab-mission"><div id="missionCard"></div><div id="myCrafts"></div></section>
       <section id="tab-board"><div id="final"></div><div id="board"></div></section>
     </main>
@@ -545,28 +545,37 @@ function renderStudent() {
         <div class="market-stock">${stock.length ? stock.map(([k, qty]) => `<div class="tile ${k === selected.material ? 'own' : ''}"><span class="em">${raw(k).emoji}</span><span class="nm">${esc(raw(k).name)}</span><span class="n">${qty}</span></div>`).join('') : '<p class="muted">현재 보유한 재화가 없어요.</p>'}</div>` : ''}
     </section>`;
   });
-  mount('trShop', { phase, paused: st.game.paused, inv: me.inventory, give: S.drafts.shopGive, want: S.drafts.shopWant }, () => {
+  mount('trShop', { phase, paused: st.game.paused, inv: me.inventory, give1: S.drafts.shopGive1, give2: S.drafts.shopGive2, want: S.drafts.shopWant, qty1: S.drafts.shopQty1, qty2: S.drafts.shopQty2, exchanges: me.shopExchangeCount || 0 }, () => {
     const keys = Object.keys(S.cfg.raw);
-    if (!S.drafts.shopGive) S.drafts.shopGive = me.material;
-    if (!S.drafts.shopWant || S.drafts.shopWant === S.drafts.shopGive) S.drafts.shopWant = keys.find((k) => k !== S.drafts.shopGive);
+    if (!S.drafts.shopGive1) S.drafts.shopGive1 = me.material;
+    if (!S.drafts.shopGive2 || S.drafts.shopGive2 === S.drafts.shopGive1) S.drafts.shopGive2 = keys.find((k) => k !== S.drafts.shopGive1);
+    if (!S.drafts.shopWant || S.drafts.shopWant === S.drafts.shopGive1 || S.drafts.shopWant === S.drafts.shopGive2) S.drafts.shopWant = keys.find((k) => k !== S.drafts.shopGive1 && k !== S.drafts.shopGive2);
+    if (S.drafts.shopQty1 === undefined) S.drafts.shopQty1 = '2';
+    if (S.drafts.shopQty2 === undefined) S.drafts.shopQty2 = '0';
     const opts = (selected) => keys.map((k) => `<option value="${k}" ${k === selected ? 'selected' : ''}>${raw(k).emoji} ${esc(raw(k).name)} · ${me.inventory[k] ?? 0}개 보유</option>`).join('');
     const active = phase === 'trade' && !st.game.paused;
-    const enough = (me.inventory[S.drafts.shopGive] ?? 0) >= 2;
-    return `<section class="card"><h3>🏪 재화 교환 상점</h3><p class="hint">남는 기본 재화 2개를 내고, 원하는 다른 기본 재화 1개를 받아요. 모둠이 직접 교환할 재화를 선택할 수 있어요.</p>
-      <div class="shop-panel"><div class="shop-form">
-        <label>내놓을 재화 2개<select id="shopGive" data-draft="shopGive">${opts(S.drafts.shopGive)}</select></label>
+    const q1 = Math.max(0, Number(S.drafts.shopQty1) || 0), q2 = Math.max(0, Number(S.drafts.shopQty2) || 0);
+    const totalCorrect = q1 + q2 === 2 && Number.isInteger(q1) && Number.isInteger(q2);
+    const enough = (me.inventory[S.drafts.shopGive1] ?? 0) >= q1 && (me.inventory[S.drafts.shopGive2] ?? 0) >= q2;
+    const exchangesUsed = me.shopExchangeCount || 0;
+    const exchangesRemaining = Math.max(0, 5 - exchangesUsed);
+    return `<section class="card"><h3>🏪 국내 생산</h3><p class="hint">내놓을 재화 두 종류와 각각의 개수를 선택하세요. 두 재화의 개수 합계가 반드시 2개여야 하며, 교환할 때마다 원하는 재화 1개를 받아요.</p><div class="banner"><b>이번 게임 상점 이용: ${exchangesUsed}/5회</b> · ${exchangesRemaining > 0 ? `${exchangesRemaining}회 남음` : '이용 횟수를 모두 사용했어요.'}</div>
+      <div class="shop-panel"><div class="shop-form" style="grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)">
+        <label>내놓을 재화 ①<select id="shopGive1" data-draft="shopGive1">${opts(S.drafts.shopGive1)}</select><input type="number" id="shopQty1" data-draft="shopQty1" min="0" max="2" step="1" value="${esc(String(S.drafts.shopQty1))}" aria-label="첫 번째 재화 개수" style="width:100%;margin-top:5px;padding:8px;border:2px solid var(--ink);border-radius:9px" /></label>
         <div class="swap-label" style="font-size:1.6rem;text-align:center;padding-bottom:6px">➡️</div>
-        <label>받을 재화 1개<select id="shopWant" data-draft="shopWant">${opts(S.drafts.shopWant)}</select></label>
+        <label>내놓을 재화 ②<select id="shopGive2" data-draft="shopGive2">${opts(S.drafts.shopGive2)}</select><input type="number" id="shopQty2" data-draft="shopQty2" min="0" max="2" step="1" value="${esc(String(S.drafts.shopQty2))}" aria-label="두 번째 재화 개수" style="width:100%;margin-top:5px;padding:8px;border:2px solid var(--ink);border-radius:9px" /></label>
       </div>
-      <p class="hint">현재 선택한 재화 보유량: ${raw(S.drafts.shopGive).emoji} ${esc(raw(S.drafts.shopGive).name)} ${me.inventory[S.drafts.shopGive] ?? 0}개 → ${raw(S.drafts.shopWant).emoji} ${esc(raw(S.drafts.shopWant).name)} 1개</p>
+      <label style="display:block;font-weight:700;margin-top:10px">받을 재화 1개<select id="shopWant" data-draft="shopWant" style="width:100%;margin-top:4px;padding:9px;border:2px solid var(--ink);border-radius:9px;background:white">${opts(S.drafts.shopWant)}</select></label>
+      <p class="hint">내놓기: ${raw(S.drafts.shopGive1).emoji} ${esc(raw(S.drafts.shopGive1).name)} ${q1}개 + ${raw(S.drafts.shopGive2).emoji} ${esc(raw(S.drafts.shopGive2).name)} ${q2}개 = ${q1 + q2}개 → 받기: ${raw(S.drafts.shopWant).emoji} ${esc(raw(S.drafts.shopWant).name)} 1개</p>
+      ${!totalCorrect ? '<p class="muted">내놓을 두 재화의 개수 합계를 정확히 2개로 맞춰 주세요.</p>' : ''}
+      ${totalCorrect && !enough ? '<p class="muted">선택한 재화의 보유량이 부족해요.</p>' : ''}
       ${!active ? `<p class="muted">상점은 무역 시간에 게임이 진행 중일 때 이용할 수 있어요.</p>` : ''}
-      ${active && !enough ? `<p class="muted">교환하려면 내놓을 재화가 2개 이상 필요해요.</p>` : ''}
-      <button class="btn go" data-act="shop-exchange" ${active && enough && S.drafts.shopGive !== S.drafts.shopWant ? '' : 'disabled'}>🔄 재화 2개를 1개로 교환</button></div></section>`;
+      <button class="btn go" data-act="shop-exchange" ${active && enough && totalCorrect && S.drafts.shopGive1 !== S.drafts.shopGive2 && S.drafts.shopWant !== S.drafts.shopGive1 && S.drafts.shopWant !== S.drafts.shopGive2 && exchangesRemaining > 0 ? '' : 'disabled'}>🔄 재화 2개를 내고 1개 받기</button></div></section>`;
   });
   mount('trInbox', { phase, paused: st.game.paused, inc: st.incoming.map((t) => [t.id, t.status, t.reply]), inv: me.inventory }, () => {
-    if (!st.incoming.length) return `<section class="card"><h3>💌 받은 편지함</h3><p class="muted">아직 받은 편지가 없어요. 먼저 편지를 보내 볼까요?</p></section>`;
     const canReply = phase === 'trade' && !st.game.paused;
-    return `<h3 style="margin-top:20px">💌 받은 편지함 (${st.incoming.length})</h3><div class="mail-scroll">` + st.incoming.map((t) => {
+    if (!st.incoming.length) return `<section class="card"><h3>💌 받은 편지함 (0)</h3><div class="mail-scroll"><p class="muted">아직 받은 편지가 없어요. 먼저 편지를 보내 볼까요?</p></div></section>`;
+    return `<section class="card"><h3>💌 받은 편지함 (${st.incoming.length})</h3><div class="mail-scroll">` + st.incoming.map((t) => {
       const have = me.inventory[t.wantItem] ?? 0;
       const pending = t.status === 'pending';
       return `<article class="letter ${pending ? '' : 'mail ' + t.status}" style="--c:${gcol(t.from)}">
@@ -582,7 +591,7 @@ function renderStudent() {
         <p class="hint">수락할 때는 답장을 ${S.cfg.limits.minReply}글자 이상 써요. 거절할 때는 이유를 써 주면 더 좋아요.</p>
         <div class="row"><button class="btn go" data-act="accept" data-id="${t.id}">✅ 수락하기</button>
         <button class="btn no" data-act="reject" data-id="${t.id}">❌ 거절하기</button></div>` : ''}</article>`;
-    }).join('') + '</div>';
+    }).join('') + '</div></section>';
   });
   mount('trForm', { phase, me: me.id }, () => {
     if (phase !== 'trade') return '';
@@ -769,12 +778,16 @@ const ACTIONS = {
   },
   'market-group': (b) => { S.drafts.marketGroup = Number(b.dataset.g); S.sigs.trMarket = null; renderStudent(); },
   'shop-exchange': () => guarded(async () => {
-    const giveItem = $('#shopGive')?.value || S.drafts.shopGive;
+    const giveItem1 = $('#shopGive1')?.value || S.drafts.shopGive1;
+    const giveItem2 = $('#shopGive2')?.value || S.drafts.shopGive2;
+    const giveQty1 = Number($('#shopQty1')?.value ?? S.drafts.shopQty1);
+    const giveQty2 = Number($('#shopQty2')?.value ?? S.drafts.shopQty2);
     const wantItem = $('#shopWant')?.value || S.drafts.shopWant;
-    if (!giveItem || !wantItem || giveItem === wantItem) throw new Error('서로 다른 재화를 선택해 주세요.');
-    await api('shop_exchange', { method: 'POST', body: { giveItem, wantItem } });
-    S.drafts.shopGive = giveItem; S.drafts.shopWant = wantItem;
-    toast(`🏪 ${raw(giveItem).name} 2개를 내고 ${raw(wantItem).name} 1개를 받았어요.`, 'ok');
+    if (!giveItem1 || !giveItem2 || !wantItem || giveItem1 === giveItem2 || wantItem === giveItem1 || wantItem === giveItem2) throw new Error('내놓을 재화 두 종류와 다른 종류의 받을 재화를 선택해 주세요.');
+    if (!Number.isInteger(giveQty1) || !Number.isInteger(giveQty2) || giveQty1 < 0 || giveQty2 < 0 || giveQty1 + giveQty2 !== 2) throw new Error('내놓을 재화의 개수 합계는 반드시 2개여야 해요.');
+    await api('shop_exchange', { method: 'POST', body: { giveItem1, giveQty1, giveItem2, giveQty2, wantItem } });
+    Object.assign(S.drafts, { shopGive1: giveItem1, shopGive2: giveItem2, shopQty1: String(giveQty1), shopQty2: String(giveQty2), shopWant: wantItem });
+    toast(`🏪 ${raw(giveItem1).name} ${giveQty1}개와 ${raw(giveItem2).name} ${giveQty2}개를 내고 ${raw(wantItem).name} 1개를 받았어요. (이번 게임 ${Math.min(5, (S.st?.me?.shopExchangeCount || 0) + 1)}/5회)`, 'ok');
     S.sigs.trShop = null; await poll();
   }),
   craft: (b) => guarded(async () => {
