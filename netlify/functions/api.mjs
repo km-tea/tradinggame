@@ -17,8 +17,9 @@ const RAW = {
   gold:   { name: '금',     emoji: '🪙' },
 };
 const RAW_KEYS = Object.keys(RAW);
-const GROUP_COUNT = 6;
-const GROUP_MATERIAL = ['wood', 'iron', 'cotton', 'food', 'oil', 'gold']; // 1~6모둠의 특산품
+const GROUP_COUNT = 12;
+// 같은 특산품을 두 모둠씩 공유한다: 1·2 목재, 3·4 철광석, 5·6 면화, 7·8 식량, 9·10 석유, 11·12 금
+const GROUP_MATERIAL = ['wood', 'wood', 'iron', 'iron', 'cotton', 'cotton', 'food', 'food', 'oil', 'oil', 'gold', 'gold'];
 
 const LEVELS = {
   1: { name: '기본 가공품', points: 30 },
@@ -149,19 +150,18 @@ async function ensureSchema(client) {
     await new Promise((r) => setTimeout(r, 300));
     await client.query(SCHEMA_SQL);
   }
-  const { rows } = await client.query('select count(*)::int as n from tg_groups');
-  if (rows[0].n < GROUP_COUNT) {
-    for (let i = 1; i <= GROUP_COUNT; i++) {
+  // 12개 모둠을 항상 보장하고 특산품 배정을 최신 규칙으로 맞춘다.
+  // 기존 코드와 재고는 보존하며, 누락된 모둠/재고 행만 생성한다.
+  for (let i = 1; i <= GROUP_COUNT; i++) {
+    await client.query(
+      'insert into tg_groups (id, name, material, code) values ($1,$2,$3,$4) on conflict (id) do update set name=excluded.name, material=excluded.material',
+      [i, `${i}모둠`, GROUP_MATERIAL[i - 1], randomCode()]
+    );
+    for (const k of RAW_KEYS) {
       await client.query(
-        'insert into tg_groups (id, name, material, code) values ($1,$2,$3,$4) on conflict (id) do nothing',
-        [i, `${i}모둠`, GROUP_MATERIAL[i - 1], randomCode()]
+        'insert into tg_inventory (group_id, item, qty) values ($1,$2,0) on conflict do nothing',
+        [i, k]
       );
-      for (const k of RAW_KEYS) {
-        await client.query(
-          'insert into tg_inventory (group_id, item, qty) values ($1,$2,0) on conflict do nothing',
-          [i, k]
-        );
-      }
     }
   }
   schemaReady = true;
@@ -482,16 +482,31 @@ async function wipe(client) {
   await client.query('update tg_inventory set qty=0');
   await client.query('update tg_groups set mission=null');
 }
-const grantProduction = (client, n) =>
-  client.query(
-    'update tg_inventory i set qty = i.qty + $1 from tg_groups g where g.id = i.group_id and g.material = i.item',
-    [n]
-  );
+// 게임 시작 시 모둠마다 특산품 10개와, 서로 다른 보조 자원 2종(3개·2개)을 한 번만 지급한다.
+async function grantInitialResources(client) {
+  for (let groupId = 1; groupId <= GROUP_COUNT; groupId++) {
+    const group = (await client.query('select material from tg_groups where id=$1', [groupId])).rows[0];
+    if (!group) continue;
+    await client.query(
+      'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2',
+      [groupId, group.material, 10]
+    );
+    const bonusItems = shuffle(RAW_KEYS.filter((item) => item !== group.material)).slice(0, 2);
+    await client.query(
+      'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2',
+      [groupId, bonusItems[0], 3]
+    );
+    await client.query(
+      'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2',
+      [groupId, bonusItems[1], 2]
+    );
+  }
+}
 
 async function teacherAction(client, action, b) {
   switch (action) {
     case 'start': {
-      const production = clampInt(b.production, 1, 10, 4);
+      const production = 20;
       const autarky = clampInt(b.autarkySeconds, 0, 1800, 120);
       const trade = clampInt(b.tradeSeconds, 60, 3600, 720);
       return tx(client, async () => {
@@ -500,7 +515,7 @@ async function teacherAction(client, action, b) {
         for (let i = 0; i < GROUP_COUNT; i++) {
           await client.query('update tg_groups set mission=$2 where id=$1', [i + 1, keys[i % keys.length]]);
         }
-        await grantProduction(client, production);
+        await grantInitialResources(client);
         await client.query(
           "update tg_game set phase='autarky', ends_at = now() + ($1::int * interval '1 second'), production=$2, autarky_seconds=$1, trade_seconds=$3, paused=false, paused_remaining=0, announcement='', announcement_at=null where id=1",
           [autarky, production, trade]

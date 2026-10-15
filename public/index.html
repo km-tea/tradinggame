@@ -206,9 +206,9 @@ const S = {
   tab: 'craft', drafts: {}, sigs: {}, shell: null, seen: null, busy: false,
   loginRole: 'group', loginGroup: null, pollT: null,
 };
-try { S.session = JSON.parse(localStorage.getItem('tg_session') || 'null'); } catch { S.session = null; }
+try { S.session = JSON.parse(sessionStorage.getItem('tg_session') || 'null'); } catch { S.session = null; }
 const saveSession = () => {
-  try { S.session ? localStorage.setItem('tg_session', JSON.stringify(S.session)) : localStorage.removeItem('tg_session'); } catch {}
+  try { S.session ? sessionStorage.setItem('tg_session', JSON.stringify(S.session)) : sessionStorage.removeItem('tg_session'); } catch {}
 };
 
 /* ---------- 통신 ---------- */
@@ -313,9 +313,9 @@ function renderLogin() {
   S.shell = 'login'; S.sigs = {};
   $('#app').innerHTML = `<div class="login">
     <div class="hero">
-      <div class="bunting">${[1, 2, 3, 4, 5, 6].map((i) => `<span class="flag" style="--c:${gcol(i)}">${i}</span>`).join('')}</div>
+      <div class="bunting">${Array.from({length: 12}, (_, i) => i + 1).map((i) => `<span class="flag" style="--c:${gcol(i)}">${i}</span>`).join('')}</div>
       <h1>무역 항구</h1>
-      <p>우리 모둠에게는 재료가 한 가지뿐이에요.<br>다른 모둠에게 편지를 써서 거래하고 물품을 완성해 보세요.</p>
+      <p>같은 특산품을 가진 두 모둠씩, 총 12개 모둠이 함께해요.<br>입장 코드를 입력하고 거래와 제작으로 물품을 완성해 보세요.</p>
     </div>
     <div class="card">
       <div class="seg" id="seg">
@@ -331,7 +331,7 @@ function renderLoginBody() {
   if (S.loginRole === 'group') {
     $('#loginBody').innerHTML = `
       <label class="f">우리 모둠을 골라요</label>
-      <div class="gpick">${[1, 2, 3, 4, 5, 6].map((i) => `
+      <div class="gpick">${Array.from({length: 12}, (_, i) => i + 1).map((i) => `
         <button type="button" data-act="pick-login" data-g="${i}" class="${S.loginGroup === i ? 'on' : ''}">${flagEl(i, true)}<span>${i}모둠</span></button>`).join('')}</div>
       <label class="f" for="loginCode">입장 코드 (선생님이 알려 줘요)</label>
       <input id="loginCode" type="tel" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="숫자 4자리">
@@ -566,7 +566,7 @@ function updateCount() {
 function buildTeacherShell() {
   $('#app').innerHTML = `<div class="tshell">
     <header id="tHdr" class="thead"></header>
-    <section class="card" style="margin-top:12px"><h3>📣 학생 화면 관리</h3><div class="row"><label class="f" for="previewGroup">학생 화면으로 보기</label><select id="previewGroup">${[1,2,3,4,5,6].map(i=>`<option value="${i}">${i}모둠</option>`).join('')}</select><button class="btn sea" data-act="view-student">학생 화면으로 이동</button></div><div class="row" style="margin-top:12px"><input id="announceText" maxlength="240" placeholder="학생 화면에 보낼 공지 (최대 240자)"><button class="btn go" data-act="t-announce">공지 보내기</button><button class="btn sm" data-act="t-clear-announce">공지 지우기</button></div></section>
+    <section class="card" style="margin-top:12px"><h3>📣 학생 화면 관리</h3><div class="row"><label class="f" for="previewGroup">학생 화면으로 보기</label><select id="previewGroup">${Array.from({length:12},(_,i)=>i+1).map(i=>`<option value="${i}">${i}모둠</option>`).join('')}</select><button class="btn sea" data-act="view-student">학생 화면으로 이동</button></div><div class="row" style="margin-top:12px"><input id="announceText" maxlength="240" placeholder="학생 화면에 보낼 공지 (최대 240자)"><button class="btn go" data-act="t-announce">공지 보내기</button><button class="btn sm" data-act="t-clear-announce">공지 지우기</button></div></section>
     <section class="card" style="margin-top:12px;border:1px solid #d97757"><h3>🔄 놀이 전체 초기화</h3><p class="hint">놀이가 끝난 뒤 다음 수업을 준비할 때 사용하세요. 모든 모둠의 자원·제작 기록·무역 제안·점수를 지우고, 입장 코드를 새로 만들며, 게임을 대기 상태로 되돌립니다. 초기화 후에는 게임 시작을 눌러 자원을 새로 지급할 수 있습니다.</p><button class="btn no" data-act="t-reset">놀이 전체 초기화</button></section>
     <section class="card" style="margin-top:20px"><h3>🔑 모둠 입장 코드</h3><div id="tCodes"></div></section>
     <div id="tFinal"></div>
@@ -584,7 +584,7 @@ function renderTeacher() {
   mount('tHdr', { phase, p: st.game.production }, () => {
     const ctrl = {
       lobby: `<div class="settings">
-        <label>재료 지급량(회당)<input id="setProd" type="number" min="1" max="10" data-draft="prod" value="4"></label>
+        <div class="hint" style="padding:8px 0;min-width:190px"><b>🎁 시작 자원 지급</b><br>특산품 10개 + 무작위 보조 자원 3개·2개</div>
         <label>자급자족(분)<input id="setAut" type="number" min="0" max="30" step="0.5" data-draft="aut" value="2"></label>
         <label>무역(분)<input id="setTrd" type="number" min="1" max="60" step="0.5" data-draft="trd" value="12"></label>
         <button class="btn go big" data-act="t-start">▶ 게임 시작</button></div>`,
@@ -688,8 +688,8 @@ const ACTIONS = {
 
   't-start': () => guarded(async () => {
     const num = (k, d) => { const v = Number(S.drafts[k]); return Number.isFinite(v) && S.drafts[k] !== '' && S.drafts[k] !== undefined ? v : d; };
-    await tpost('start', { production: num('prod', 4), autarkySeconds: Math.round(num('aut', 2) * 60), tradeSeconds: Math.round(num('trd', 12) * 60) });
-    toast('게임을 시작했어요! 자급자족 시간이에요.', 'ok'); await poll();
+    await tpost('start', { production: 20, autarkySeconds: Math.round(num('aut', 2) * 60), tradeSeconds: Math.round(num('trd', 12) * 60) });
+    toast('게임을 시작했어요! 특산품 10개와 무작위 보조 자원 3개·2개를 지급했어요.', 'ok'); await poll();
   }),
   't-open': () => guarded(async () => {
     if (!confirm('무역을 열까요? 추가 재료는 지급되지 않아요.')) return;
