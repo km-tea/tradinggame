@@ -91,13 +91,13 @@ textarea{resize:vertical;min-height:84px}
 .banner.stop{background:#ffe1e3} .banner.go{background:#d6f5e4}
 .banner small{display:block;font-family:var(--body);color:#33425f;margin-top:2px}
 
-.inv{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:10px}
-.tile{border:3px solid var(--ink);border-radius:12px;padding:8px 6px;text-align:center;background:#fff;position:relative}
+.inv{display:grid;grid-template-columns:repeat(auto-fit,minmax(82px,1fr));gap:6px}
+.tile{border:2px solid var(--ink);border-radius:9px;padding:5px 4px;text-align:center;background:#fff;position:relative;min-width:0}
 .tile.own{background:var(--sand)}
-.tile .em{font-size:1.8rem;line-height:1.1;display:block}
-.tile .nm{font-size:.9rem}
-.tile .n{font-family:var(--display);font-size:1.7rem;line-height:1.1}
-.tile .tag{position:absolute;top:-10px;right:-6px;background:var(--ink);color:#fff;border-radius:8px;font-size:.7rem;padding:0 6px}
+.tile .em{font-size:1.2rem;line-height:1.05;display:block}
+.tile .nm{font-size:.76rem;line-height:1.2;display:block;overflow-wrap:anywhere}
+.tile .n{font-family:var(--display);font-size:1.2rem;line-height:1.05;margin-top:2px}
+.tile .tag{position:absolute;top:-8px;right:-4px;background:var(--ink);color:#fff;border-radius:6px;font-size:.58rem;padding:0 4px}
 .lvhead{display:flex;align-items:baseline;gap:8px;margin:20px 0 8px}
 .lvhead .pts{font-family:var(--display);font-size:1.1rem;background:var(--ink);color:#fff;border-radius:8px;padding:0 10px}
 .recipes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
@@ -128,6 +128,12 @@ textarea{resize:vertical;min-height:84px}
 .mail.accepted{background:#effaf3} .mail.rejected,.mail.cancelled{background:#fbf0f1}
 .mail header{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .mail header b{font-family:var(--display);font-weight:400;margin-left:auto}
+/* 편지함은 목록 안에서 스크롤해 지난 기록까지 확인 */
+.mail-scroll{max-height: min(62vh, 620px);overflow-y:auto;overscroll-behavior:contain;padding:4px 8px 12px 4px;scrollbar-gutter:stable;border:2px solid #d8deea;border-radius:12px;background:#f8fafc}
+.mail-scroll .letter:first-child,.mail-scroll .mail:first-child{margin-top:6px}
+.mail-scroll::-webkit-scrollbar{width:10px}
+.mail-scroll::-webkit-scrollbar-thumb{background:#aab6ca;border-radius:8px;border:2px solid #f8fafc}
+.mail-scroll::-webkit-scrollbar-track{background:#f8fafc}
 .feed{margin:6px 0;padding:6px 10px;border-bottom:2px dotted #b4c0d4;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 
 /* ---------- 미션·순위 ---------- */
@@ -217,7 +223,11 @@ button{min-height:42px}
   .settings label{flex:1 1 130px}
   .settings button{flex:1 1 100%}
   .rank li{grid-template-columns:30px auto 1fr auto;gap:6px}
-  .tile .n{font-size:1.5rem}
+  .inv{grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:5px}
+  .tile{padding:5px 3px}
+  .tile .em{font-size:1.1rem}
+  .tile .nm{font-size:.72rem}
+  .tile .n{font-size:1.15rem}
 }
 @media (hover:none){
   .gpick button,.pickbtn,.nav button,.btn{min-height:48px}
@@ -510,23 +520,26 @@ function renderStudent() {
     lobby: '⏳ 아직 무역 시간이 아니에요.', autarky: '🚫 지금은 무역 금지 시간이에요. 선생님이 무역을 열어 주실 때까지 기다려요.', finished: '🏁 무역이 끝났어요. 아래에서 오고 간 편지를 볼 수 있어요.', trade: '⏸️ 선생님이 게임을 잠시 멈췄어요.',
   }[phase]}</div>`);
   mount('trInv', { inv: me.inventory }, () => `<section class="card"><h3>🎒 지금 우리 창고</h3>${invTiles(me.inventory, me.material)}</section>`);
-  mount('trInbox', { phase, inc: st.incoming.map((t) => t.id), inv: me.inventory }, () => {
-    if (phase !== 'trade') return '';
-    if (!st.incoming.length) return `<section class="card"><h3>💌 받은 제안</h3><p class="muted">아직 받은 제안이 없어요. 먼저 편지를 보내 볼까요?</p></section>`;
-    return `<h3 style="margin-top:20px">💌 받은 제안 (${st.incoming.length})</h3>` + st.incoming.map((t) => {
+  mount('trInbox', { phase, paused: st.game.paused, inc: st.incoming.map((t) => [t.id, t.status, t.reply]), inv: me.inventory }, () => {
+    if (!st.incoming.length) return `<section class="card"><h3>💌 받은 편지함</h3><p class="muted">아직 받은 편지가 없어요. 먼저 편지를 보내 볼까요?</p></section>`;
+    const canReply = phase === 'trade' && !st.game.paused;
+    return `<h3 style="margin-top:20px">💌 받은 편지함 (${st.incoming.length})</h3><div class="mail-scroll">` + st.incoming.map((t) => {
       const have = me.inventory[t.wantItem] ?? 0;
-      return `<article class="letter" style="--c:${gcol(t.from)}">
+      const pending = t.status === 'pending';
+      return `<article class="letter ${pending ? '' : 'mail ' + t.status}" style="--c:${gcol(t.from)}">
         <span class="stamp">${flagEl(t.from, true)}</span>
         <h4>${t.from}모둠의 무역 제안</h4>
+        <p class="small">상태: <b>${STATUS[t.status] || t.status}</b></p>
         ${dealHTML(t)}
         <p class="small">우리 모둠의 ${esc(raw(t.wantItem).name)}: ${have}개 ${have >= t.wantQty ? '(충분해요)' : '(모자라요)'}</p>
         <blockquote class="quote" style="--c:${gcol(t.from)}">${esc(t.message)}</blockquote>
-        <label class="f" for="re-${t.id}">답장 쓰기</label>
+        ${t.reply ? `<blockquote class="quote reply">${esc(t.reply)}</blockquote>` : ''}
+        ${pending && canReply ? `<label class="f" for="re-${t.id}">답장 쓰기</label>
         <textarea id="re-${t.id}" data-draft="re-${t.id}" rows="2" maxlength="${S.cfg.limits.maxText}" placeholder="예) 좋아요! 우리도 면화가 필요했어요. 같이 물품을 만들어요."></textarea>
         <p class="hint">수락할 때는 답장을 ${S.cfg.limits.minReply}글자 이상 써요. 거절할 때는 이유를 써 주면 더 좋아요.</p>
         <div class="row"><button class="btn go" data-act="accept" data-id="${t.id}">✅ 수락하기</button>
-        <button class="btn no" data-act="reject" data-id="${t.id}">❌ 거절하기</button></div></article>`;
-    }).join('');
+        <button class="btn no" data-act="reject" data-id="${t.id}">❌ 거절하기</button></div>` : ''}</article>`;
+    }).join('') + '</div>';
   });
   mount('trForm', { phase, me: me.id }, () => {
     if (phase !== 'trade') return '';
@@ -555,13 +568,13 @@ function renderStudent() {
   }, updateCount);
   mount('trOut', { out: st.outgoing.map((t) => [t.id, t.status, t.reply]) }, () => {
     if (!st.outgoing.length) return '';
-    return `<h3 style="margin-top:20px">📮 내가 보낸 제안</h3>` + st.outgoing.map((t) => mailHTML(t,
-      t.status === 'pending' ? `<p><button class="btn sm no" data-act="cancel" data-id="${t.id}">제안 취소하기</button></p>` : '')).join('');
+    return `<h3 style="margin-top:20px">📮 내가 보낸 편지 (${st.outgoing.length})</h3><div class="mail-scroll">` + st.outgoing.map((t) => mailHTML(t,
+      t.status === 'pending' && phase === 'trade' && !st.game.paused ? `<p><button class="btn sm no" data-act="cancel" data-id="${t.id}">제안 취소하기</button></p>` : '')).join('') + '</div>';
   });
-  mount('trFeed', { feed: st.feed.map((f) => f.id) }, () => `<section class="card"><h3>📰 우리 반 무역 소식</h3>
+  mount('trFeed', { feed: st.feed.map((f) => f.id) }, () => `<section class="card"><h3>📰 우리 반 무역 소식</h3><div class="mail-scroll">
     ${st.feed.length ? st.feed.map((f) => `<div class="feed">${flagEl(f.from)} ⇄ ${flagEl(f.to)}
       <span class="item">${itemQty(f.giveItem, f.giveQty)}</span> ⇄ <span class="item">${itemQty(f.wantItem, f.wantQty)}</span></div>`).join('')
-      : '<p class="muted">아직 성사된 무역이 없어요.</p>'}</section>`);
+      : '<p class="muted">아직 성사된 무역이 없어요.</p>'}</div></section>`);
 
   /* --- 미션 탭 --- */
   mount('missionCard', { m: me.mission }, () => {
@@ -576,7 +589,7 @@ function renderStudent() {
   });
   mount('myCrafts', { c: me.crafts }, () => {
     const list = Object.entries(me.crafts);
-    return `<section class="card"><h3>🧰 우리가 만든 물품</h3>${list.length ? `<div class="row">${list.map(([k, n]) => `<span class="chip">${S.cfg.products[k].emoji} ${esc(S.cfg.products[k].name)} ×${n}</span>`).join('')}</div>` : '<p class="muted">아직 만든 물품이 없어요.</p>'}</section>`;
+    return `<section class="card"><h3>🧰 우리가 만든 물품</h3>${list.length ? `<div class="row">${list.map(([k, n]) => `<span class="chip">${raw(k).emoji} ${esc(raw(k).name)} ×${n}</span>`).join('')}</div>` : '<p class="muted">아직 만든 물품이 없어요.</p>'}</section>`;
   });
 
   /* --- 순위 탭 --- */
@@ -666,7 +679,7 @@ function renderTeacher() {
     ${st.groups.map((g) => `<tr><td class="rk">${ranked.findIndex((x) => x.id === g.id) + 1}</td>
       <td>${flagEl(g.id)} ${raw(g.material).emoji}</td>
       <td>${Object.entries(g.inventory).filter(([, n]) => n > 0).map(([k, n]) => `<span class="chip">${raw(k).emoji}${n}</span>`).join(' ') || '<span class="muted">-</span>'}</td>
-      <td>${Object.entries(g.crafts).map(([k, n]) => `<span class="chip">${S.cfg.products[k].emoji}×${n}</span>`).join(' ') || '<span class="muted">-</span>'}</td>
+      <td>${Object.entries(g.crafts).map(([k, n]) => `<span class="chip">${raw(k).emoji}×${n}</span>`).join(' ') || '<span class="muted">-</span>'}</td>
       <td>${g.tradeCount}회</td>
       <td>${g.mission ? `${g.mission.emoji} ${esc(g.mission.title)} ${g.mission.progress}/${g.mission.target} ${g.mission.done ? '✅' : ''}` : '-'}</td>
       <td class="pts">${g.total}</td></tr>`).join('')}</tbody></table>`);
@@ -684,7 +697,7 @@ function renderTeacher() {
   mount('tFeed', st.trades.map((t) => [t.id, t.status, t.reply]), () => {
     const s = st.summary;
     const head = `<p class="small">성공 ${s.accepted} · 기다림 ${s.pending} · 거절 ${s.rejected}</p>`;
-    return head + (st.trades.length ? st.trades.map((t) => mailHTML(t)).join('') : '<p class="muted">아직 오간 편지가 없어요.</p>');
+    return head + `<div class="mail-scroll">` + (st.trades.length ? st.trades.map((t) => mailHTML(t)).join('') : '<p class="muted">아직 오간 편지가 없어요.</p>') + '</div>';
   });
 }
 

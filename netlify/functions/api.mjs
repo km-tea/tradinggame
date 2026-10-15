@@ -21,29 +21,25 @@ const MAX_GROUP_COUNT = 10;
 const GROUP_MATERIAL = ['wood', 'wood', 'iron', 'iron', 'cotton', 'cotton', 'food', 'food', 'oil', 'oil'];
 
 const LEVELS = {
-  1: { name: '기본 가공품', points: '30~50' },
+  1: { name: '기본 가공품', points: 30 },
   2: { name: '심화 가공품', points: 100 },
   3: { name: '최종 완성품', points: 200 },
 };
-// 기본 가공품은 원재료 2/3/4종 조합에 따라 30/40/50점.
+// 기본·심화 가공품은 재료 2종, 최종 완성품은 재료 3종으로 제작한다.
 // 심화 가공품에는 기본 가공품이, 최종 완성품에는 심화 가공품이 반드시 포함된다.
 const PRODUCTS = {
-  // 기본 가공품: 재료 종류 수에 따라 30/40/50점
+  // 기본 가공품: 모두 원재료 2종, 각 30점
   cart:      { name: '건설 자재 묶음',       emoji: '🏗️', level: 1, points: 30, recipe: { wood: 1, iron: 1 } },
-  clothes:   { name: '생활용품 세트',        emoji: '👕', level: 1, points: 40, recipe: { cotton: 1, food: 1, wood: 1 } },
-  fuel:      { name: '산업용 장비',          emoji: '⚙️', level: 1, points: 50, recipe: { oil: 1, iron: 1, cotton: 1, food: 1 } },
+  clothes:   { name: '생활용품 세트',        emoji: '👕', level: 1, points: 30, recipe: { cotton: 1, food: 1 } },
   paper:     { name: '종이·포장재 묶음',      emoji: '📦', level: 1, points: 30, recipe: { wood: 1, cotton: 1 } },
-  farmkit:   { name: '농업 도구 세트',        emoji: '🌱', level: 1, points: 40, recipe: { iron: 1, food: 1, oil: 1 } },
-  textile:   { name: '기능성 섬유',          emoji: '🧵', level: 1, points: 50, recipe: { cotton: 1, wood: 1, food: 1, oil: 1 } },
-  smart:     { name: '스마트 기기',          emoji: '📱', level: 2, points: 100, recipe: { cart: 1, iron: 1, oil: 1 } },
-  fashion:   { name: '고급 의류',            emoji: '🧥', level: 2, points: 100, recipe: { clothes: 1, cotton: 1, wood: 1 } },
-  energy:    { name: '고효율 에너지 장치',     emoji: '🔋', level: 2, points: 100, recipe: { fuel: 1, oil: 1, food: 1 } },
-  medkit:    { name: '응급 구호 키트',        emoji: '🩹', level: 2, points: 100, recipe: { farmkit: 1, cotton: 1, oil: 1 } },
-  solar:     { name: '태양광 발전 설비',       emoji: '☀️', level: 2, points: 100, recipe: { textile: 1, iron: 1, food: 1 } },
-  city:      { name: '첨단 도시 모형',        emoji: '🚀', level: 3, points: 200, recipe: { smart: 1, iron: 1, oil: 1, wood: 1 } },
-  civ:       { name: '지속 가능한 미래 세트',  emoji: '👑', level: 3, points: 200, recipe: { fashion: 1, cotton: 1, food: 1, oil: 1 } },
-  greenCity: { name: '친환경 스마트 도시',     emoji: '🌳', level: 3, points: 200, recipe: { solar: 1, wood: 1, oil: 1, iron: 1 } },
-  careWorld: { name: '모두를 위한 안전한 세상', emoji: '🌍', level: 3, points: 200, recipe: { medkit: 1, food: 1, cotton: 1, wood: 1 } },
+  farmkit:   { name: '농업 도구 세트',        emoji: '🌱', level: 1, points: 30, recipe: { iron: 1, food: 1 } },
+  // 심화 가공품: 기본 가공품 1개 + 원재료 1종, 각 100점
+  smart:     { name: '스마트 기기',          emoji: '📱', level: 2, points: 100, recipe: { cart: 1, oil: 1 } },
+  fashion:   { name: '고급 의류',            emoji: '🧥', level: 2, points: 100, recipe: { clothes: 1, cotton: 1 } },
+  medkit:    { name: '응급 구호 키트',        emoji: '🩹', level: 2, points: 100, recipe: { farmkit: 1, oil: 1 } },
+  // 최종 완성품: 심화 가공품 1개 + 원재료 2종, 각 200점
+  city:      { name: '첨단 도시 모형',        emoji: '🚀', level: 3, points: 200, recipe: { smart: 1, iron: 1, wood: 1 } },
+  civ:       { name: '지속 가능한 미래 세트',  emoji: '👑', level: 3, points: 200, recipe: { fashion: 1, food: 1, oil: 1 } },
 };
 const ITEM_KEYS = [...RAW_KEYS, ...Object.keys(PRODUCTS)];
 const itemInfo = (k) => RAW[k] || PRODUCTS[k] || { name: k, emoji: '📦' };
@@ -178,20 +174,28 @@ async function ensureSchema(client) {
     await new Promise((r) => setTimeout(r, 300));
     await client.query(SCHEMA_SQL);
   }
-  // 10개 모둠을 항상 보장하고 특산품 배정을 최신 규칙으로 맞춘다.
-  // 기존 코드와 재고는 보존하며, 누락된 모둠/재고 행만 생성한다.
+  // 초기화 시 순차적인 수십 회 DB 왕복을 피하고 두 번의 묶음 쿼리로 처리한다.
+  // 기존 모둠 입장 코드와 재고는 보존하며, 누락된 행만 생성한다.
+  const groupValues = [];
+  const groupParams = [];
   for (let i = 1; i <= MAX_GROUP_COUNT; i++) {
-    await client.query(
-      'insert into tg_groups (id, name, material, code) values ($1,$2,$3,$4) on conflict (id) do update set name=excluded.name, material=excluded.material',
-      [i, `${i}모둠`, GROUP_MATERIAL[i - 1], randomCode()]
-    );
-    for (const k of ITEM_KEYS) {
-      await client.query(
-        'insert into tg_inventory (group_id, item, qty) values ($1,$2,0) on conflict do nothing',
-        [i, k]
-      );
-    }
+    const offset = groupParams.length;
+    groupValues.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`);
+    groupParams.push(i, `${i}모둠`, GROUP_MATERIAL[i - 1], randomCode());
   }
+  await client.query(
+    `insert into tg_groups (id, name, material, code) values ${groupValues.join(', ')}
+     on conflict (id) do update set name=excluded.name, material=excluded.material`,
+    groupParams
+  );
+  await client.query(
+    `insert into tg_inventory (group_id, item, qty)
+     select g.id, i.item, 0
+     from generate_series(1, $1::int) as g(id)
+     cross join unnest($2::text[]) as i(item)
+     on conflict do nothing`,
+    [MAX_GROUP_COUNT, ITEM_KEYS]
+  );
   await client.query('update tg_game set group_count=10 where id=1');
   schemaReady = true;
 }
@@ -356,7 +360,7 @@ async function state(client, req) {
 
   if (teacher) {
     const now = new Date(gm.now).getTime();
-    const trades = [...all.trades].reverse().slice(0, 80).map(tradeOut);
+    const trades = [...all.trades].reverse().map(tradeOut);
     const count = (s) => all.trades.filter((t) => t.status === s).length;
     return json({
       ...base,
@@ -378,9 +382,9 @@ async function state(client, req) {
     role: 'group',
     me,
     board: ranked.map((s) => ({ id: s.id, name: s.name, material: s.material, total: s.total })),
-    incoming: tradesAsc.filter((t) => t.to_group === g.id && t.status === 'pending').reverse().map(tradeOut),
-    outgoing: tradesAsc.filter((t) => t.from_group === g.id).reverse().slice(0, 10).map(tradeOut),
-    feed: tradesAsc.filter((t) => t.status === 'accepted').reverse().slice(0, 8).map((t) => ({
+    incoming: tradesAsc.filter((t) => t.to_group === g.id).reverse().map(tradeOut),
+    outgoing: tradesAsc.filter((t) => t.from_group === g.id).reverse().map(tradeOut),
+    feed: tradesAsc.filter((t) => t.status === 'accepted').reverse().map((t) => ({
       id: t.id, from: t.from_group, to: t.to_group,
       giveItem: t.give_item, giveQty: t.give_qty, wantItem: t.want_item, wantQty: t.want_qty,
     })),
@@ -718,10 +722,25 @@ async function dispatch(client, req, route) {
 }
 
 export default async (req) => {
+  const route = new URL(req.url).pathname.replace(/^\/api\/?/, '').replace(/\/$/, '');
+
+  // 교사 PIN 확인은 DB를 전혀 사용하지 않는다. DB 연결/스키마 초기화를 기다리지 않고 즉시 응답한다.
+  // clone()을 사용하므로 일반 로그인 처리에 사용할 원본 요청 본문은 그대로 남는다.
+  if (route === 'login' && req.method === 'POST') {
+    try {
+      const earlyBody = await req.clone().json();
+      if (earlyBody && earlyBody.pin !== undefined) {
+        if (!checkPin(String(earlyBody.pin))) return json({ error: '교사 비밀번호가 맞지 않아요.' }, 401);
+        return json({ ok: true, role: 'teacher' });
+      }
+    } catch {
+      // 본문 오류는 일반 요청 처리 경로에서 일관되게 안내한다.
+    }
+  }
+
   if (!process.env.DATABASE_URL) {
     return json({ error: 'DATABASE_URL 환경변수가 설정되지 않았어요.' }, 500);
   }
-  const route = new URL(req.url).pathname.replace(/^\/api\/?/, '').replace(/\/$/, '');
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   let client;
   try {
