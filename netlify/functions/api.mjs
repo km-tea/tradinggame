@@ -384,6 +384,11 @@ async function state(client, req) {
     board: ranked.map((s) => ({ id: s.id, name: s.name, material: s.material, total: s.total })),
     incoming: tradesAsc.filter((t) => t.to_group === g.id).reverse().map(tradeOut),
     outgoing: tradesAsc.filter((t) => t.from_group === g.id).reverse().map(tradeOut),
+    // 학생 무역 탭에서 다른 모둠의 재고도 확인할 수 있도록 공개 재고만 전달한다(입장 코드 등 비공개 정보는 제외).
+    marketGroups: all.groups.map((group) => ({
+      id: group.id, name: group.name, material: group.material,
+      inventory: Object.fromEntries(ITEM_KEYS.map((key) => [key, stats[group.id]?.inventory[key] ?? 0])),
+    })),
     feed: tradesAsc.filter((t) => t.status === 'accepted').reverse().map((t) => ({
       id: t.id, from: t.from_group, to: t.to_group,
       giveItem: t.give_item, giveQty: t.give_qty, wantItem: t.want_item, wantQty: t.want_qty,
@@ -458,6 +463,30 @@ async function propose(client, g, b) {
       [g.id, to, giveItem, giveQty, wantItem, wantQty, message]
     );
     return json({ ok: true, id: r.rows[0].id });
+  });
+}
+
+async function shopExchange(client, g, b) {
+  const giveItem = String(b.giveItem || '');
+  const wantItem = String(b.wantItem || '');
+  if (!RAW[giveItem] || !RAW[wantItem]) fail(400, '상점에서 바꿀 기본 재화를 골라 주세요.');
+  if (giveItem === wantItem) fail(400, '같은 재화끼리는 교환할 수 없어요. 다른 재화를 선택해 주세요.');
+
+  return tx(client, async () => {
+    const { rows } = await client.query('select phase, paused from tg_game where id=1 for update');
+    const game = rows[0];
+    if (game.phase !== 'trade' || game.paused) fail(403, game.paused ? '선생님이 게임을 잠시 멈췄어요.' : '상점은 무역 시간에만 이용할 수 있어요.');
+
+    const inv = await client.query(
+      'select item, qty from tg_inventory where group_id=$1 and item = any($2::text[]) order by item for update',
+      [g.id, [giveItem, wantItem]]
+    );
+    const quantities = Object.fromEntries(inv.rows.map((row) => [row.item, row.qty]));
+    if ((quantities[giveItem] ?? 0) < 2) fail(400, `교환하려면 ${RAW[giveItem].name}이(가) 2개 필요해요. 현재 ${(quantities[giveItem] ?? 0)}개 있어요.`);
+
+    await client.query('update tg_inventory set qty=qty-2 where group_id=$1 and item=$2', [g.id, giveItem]);
+    await client.query('update tg_inventory set qty=qty+1 where group_id=$1 and item=$2', [g.id, wantItem]);
+    return json({ ok: true, giveItem, giveQty: 2, wantItem, wantQty: 1 });
   });
 }
 
@@ -715,6 +744,7 @@ async function dispatch(client, req, route) {
   switch (route) {
     case 'craft':   return craft(client, g, body);
     case 'propose': return propose(client, g, body);
+    case 'shop_exchange': return shopExchange(client, g, body);
     case 'respond': return respond(client, g, body);
     case 'cancel':  return cancel(client, g, body);
     default:        return fail(404, '알 수 없는 요청이에요.');

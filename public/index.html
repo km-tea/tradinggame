@@ -121,6 +121,18 @@ textarea{resize:vertical;min-height:84px}
 .pickbtn small{display:block;font-family:var(--body);line-height:1.1}
 .pickbtn.on{background:var(--sand);box-shadow:0 4px 0 var(--ink);transform:translateY(-2px)}
 .two{display:grid;grid-template-columns:1fr 110px;gap:8px}
+.market-groups{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin:10px 0}
+.market-group{border:2px solid var(--ink);border-radius:10px;background:#fff;padding:8px 4px;cursor:pointer;text-align:center;font-family:var(--display);min-width:0}
+.market-group.on{background:var(--sand);box-shadow:0 3px 0 var(--ink);transform:translateY(-1px)}
+.market-group small{display:block;font-size:.72rem;line-height:1.2;overflow-wrap:anywhere}
+.market-stock{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px;margin-top:10px}
+.market-stock .tile{min-height:0;padding:8px 5px;gap:2px}
+.market-stock .tile .em{font-size:1.2rem}.market-stock .tile .n{font-size:1.05rem}
+.shop-panel{background:#fff9e9;border:2px dashed #9a6700;border-radius:12px;padding:12px;margin-top:10px}
+.shop-form{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:end}
+.shop-form label{display:block;font-weight:700;font-size:.9rem}
+.shop-form select{width:100%;min-width:0;margin-top:4px;padding:9px;border:2px solid var(--ink);border-radius:9px;background:white}
+@media(max-width:600px){.market-groups{grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.market-group{font-size:.9rem;padding:7px 2px}.market-group small{font-size:.65rem}.shop-form{grid-template-columns:1fr}.shop-form .swap-label{text-align:center;padding:0}}
 .example{background:#eef6ff;border:2px dashed #2563eb;border-radius:10px;padding:8px 12px;font-size:.9rem;margin:8px 0}
 .cnt{font-size:.85rem;color:var(--mute);text-align:right}
 .cnt.ok{color:var(--ok);font-weight:700}
@@ -432,7 +444,7 @@ function buildStudentShell() {
     <header id="hdr" class="topbar"></header><div id="studentNotice"></div>
     <main>
       <section id="tab-craft"><div id="craftBanner"></div><div id="craftInv"></div><div id="craftRecipes"></div></section>
-      <section id="tab-trade"><div id="trLock"></div><div id="trInv"></div><div id="trInbox"></div><div id="trForm"></div><div id="trOut"></div><div id="trFeed"></div></section>
+      <section id="tab-trade"><div id="trLock"></div><div id="trInv"></div><div id="trMarket"></div><div id="trShop"></div><div id="trInbox"></div><div id="trForm"></div><div id="trOut"></div><div id="trFeed"></div></section>
       <section id="tab-mission"><div id="missionCard"></div><div id="myCrafts"></div></section>
       <section id="tab-board"><div id="final"></div><div id="board"></div></section>
     </main>
@@ -520,6 +532,37 @@ function renderStudent() {
     lobby: '⏳ 아직 무역 시간이 아니에요.', autarky: '🚫 지금은 무역 금지 시간이에요. 선생님이 무역을 열어 주실 때까지 기다려요.', finished: '🏁 무역이 끝났어요. 아래에서 오고 간 편지를 볼 수 있어요.', trade: '⏸️ 선생님이 게임을 잠시 멈췄어요.',
   }[phase]}</div>`);
   mount('trInv', { inv: me.inventory }, () => `<section class="card"><h3>🎒 지금 우리 창고</h3>${invTiles(me.inventory, me.material)}</section>`);
+  const marketGroups = st.marketGroups || [];
+  if (!S.drafts.marketGroup || !marketGroups.some((g) => g.id === Number(S.drafts.marketGroup))) S.drafts.marketGroup = me.id;
+  const selectedMarketGroup = marketGroups.find((g) => g.id === Number(S.drafts.marketGroup));
+  mount('trMarket', { selected: selectedMarketGroup?.id, groups: marketGroups.map((g) => [g.id, g.material, g.inventory]) }, () => {
+    if (!marketGroups.length) return '';
+    const selected = selectedMarketGroup;
+    const stock = selected ? Object.entries(selected.inventory).filter(([, qty]) => qty > 0) : [];
+    return `<section class="card"><h3>🔎 우리 반 모둠 창고 둘러보기</h3><p class="hint">모둠 번호를 누르면 그 모둠이 현재 가진 기본 재화와 가공품을 볼 수 있어요. 서로 어떤 재화가 남는지 살펴보고 효율적인 무역을 계획해 보세요.</p>
+      <div class="market-groups">${marketGroups.map((g) => `<button type="button" class="market-group ${selected?.id === g.id ? 'on' : ''}" data-act="market-group" data-g="${g.id}">${flagEl(g.id)}<small>${raw(g.material).emoji} ${esc(g.id + '모둠')}</small></button>`).join('')}</div>
+      ${selected ? `<div class="banner"><b>${selected.id}모둠 창고</b> · ${raw(selected.material).emoji} ${esc(raw(selected.material).name)} 특산품</div>
+        <div class="market-stock">${stock.length ? stock.map(([k, qty]) => `<div class="tile ${k === selected.material ? 'own' : ''}"><span class="em">${raw(k).emoji}</span><span class="nm">${esc(raw(k).name)}</span><span class="n">${qty}</span></div>`).join('') : '<p class="muted">현재 보유한 재화가 없어요.</p>'}</div>` : ''}
+    </section>`;
+  });
+  mount('trShop', { phase, paused: st.game.paused, inv: me.inventory, give: S.drafts.shopGive, want: S.drafts.shopWant }, () => {
+    const keys = Object.keys(S.cfg.raw);
+    if (!S.drafts.shopGive) S.drafts.shopGive = me.material;
+    if (!S.drafts.shopWant || S.drafts.shopWant === S.drafts.shopGive) S.drafts.shopWant = keys.find((k) => k !== S.drafts.shopGive);
+    const opts = (selected) => keys.map((k) => `<option value="${k}" ${k === selected ? 'selected' : ''}>${raw(k).emoji} ${esc(raw(k).name)} · ${me.inventory[k] ?? 0}개 보유</option>`).join('');
+    const active = phase === 'trade' && !st.game.paused;
+    const enough = (me.inventory[S.drafts.shopGive] ?? 0) >= 2;
+    return `<section class="card"><h3>🏪 재화 교환 상점</h3><p class="hint">남는 기본 재화 2개를 내고, 원하는 다른 기본 재화 1개를 받아요. 모둠이 직접 교환할 재화를 선택할 수 있어요.</p>
+      <div class="shop-panel"><div class="shop-form">
+        <label>내놓을 재화 2개<select id="shopGive" data-draft="shopGive">${opts(S.drafts.shopGive)}</select></label>
+        <div class="swap-label" style="font-size:1.6rem;text-align:center;padding-bottom:6px">➡️</div>
+        <label>받을 재화 1개<select id="shopWant" data-draft="shopWant">${opts(S.drafts.shopWant)}</select></label>
+      </div>
+      <p class="hint">현재 선택한 재화 보유량: ${raw(S.drafts.shopGive).emoji} ${esc(raw(S.drafts.shopGive).name)} ${me.inventory[S.drafts.shopGive] ?? 0}개 → ${raw(S.drafts.shopWant).emoji} ${esc(raw(S.drafts.shopWant).name)} 1개</p>
+      ${!active ? `<p class="muted">상점은 무역 시간에 게임이 진행 중일 때 이용할 수 있어요.</p>` : ''}
+      ${active && !enough ? `<p class="muted">교환하려면 내놓을 재화가 2개 이상 필요해요.</p>` : ''}
+      <button class="btn go" data-act="shop-exchange" ${active && enough && S.drafts.shopGive !== S.drafts.shopWant ? '' : 'disabled'}>🔄 재화 2개를 1개로 교환</button></div></section>`;
+  });
   mount('trInbox', { phase, paused: st.game.paused, inc: st.incoming.map((t) => [t.id, t.status, t.reply]), inv: me.inventory }, () => {
     if (!st.incoming.length) return `<section class="card"><h3>💌 받은 편지함</h3><p class="muted">아직 받은 편지가 없어요. 먼저 편지를 보내 볼까요?</p></section>`;
     const canReply = phase === 'trade' && !st.game.paused;
@@ -724,6 +767,16 @@ const ACTIONS = {
     S.drafts.to = b.dataset.g;
     document.querySelectorAll('#pickTo .pickbtn').forEach((x) => x.classList.toggle('on', x === b));
   },
+  'market-group': (b) => { S.drafts.marketGroup = Number(b.dataset.g); S.sigs.trMarket = null; renderStudent(); },
+  'shop-exchange': () => guarded(async () => {
+    const giveItem = $('#shopGive')?.value || S.drafts.shopGive;
+    const wantItem = $('#shopWant')?.value || S.drafts.shopWant;
+    if (!giveItem || !wantItem || giveItem === wantItem) throw new Error('서로 다른 재화를 선택해 주세요.');
+    await api('shop_exchange', { method: 'POST', body: { giveItem, wantItem } });
+    S.drafts.shopGive = giveItem; S.drafts.shopWant = wantItem;
+    toast(`🏪 ${raw(giveItem).name} 2개를 내고 ${raw(wantItem).name} 1개를 받았어요.`, 'ok');
+    S.sigs.trShop = null; await poll();
+  }),
   craft: (b) => guarded(async () => {
     const p = S.cfg.products[b.dataset.p];
     const r = await api('craft', { method: 'POST', body: { product: b.dataset.p } });
