@@ -174,11 +174,54 @@ td.rk{font-family:var(--display);font-size:1.3rem;text-align:center}
 .code{border:3px solid var(--ink);border-radius:12px;padding:8px 10px;background:#fff}
 .code .cd{font-family:var(--display);font-size:2rem;letter-spacing:.12em}
 
+/* 태블릿·터치 화면 최적화 */
+button, input, select, textarea{touch-action:manipulation}
+button{min-height:42px}
+.shell{width:100%;max-width:1100px}
+.tshell{width:100%;max-width:1360px}
+@media (min-width:641px) and (max-width:1100px){
+  html{font-size:17px}
+  .shell{padding:0 16px 120px}
+  .topbar{gap:10px;padding:12px 16px}
+  .topbar .ttl{font-size:1.25rem}
+  .timer{font-size:1.6rem}
+  .nav button{padding:10px 4px 12px;font-size:1.05rem}
+  .nav button .e{font-size:1.65rem}
+  .recipes{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .recipe{padding:12px;border-left-width:10px}
+  .recipe .ings{gap:5px}
+  .chip{white-space:normal}
+  .tgrid{grid-template-columns:1fr}
+  .thead{gap:10px;padding:12px 16px}
+  .thead .timer{font-size:2.4rem}
+  .settings{gap:10px}
+  .settings button{flex:1 1 160px}
+}
 @media (max-width:640px){
   html{font-size:16px}
   .hero h1{font-size:2.4rem}
   .cmp{grid-template-columns:96px 1fr 58px}
   .two{grid-template-columns:1fr 92px}
+  .shell{padding:0 10px 112px}
+  .topbar{gap:8px;padding:9px 10px;margin:0 -10px}
+  .topbar .ttl{font-size:1.08rem}
+  .topbar .sp{display:none}
+  .topbar .timer{font-size:1.35rem}
+  .score{font-size:1.15rem;padding:2px 9px}
+  .recipes{grid-template-columns:1fr}
+  .recipe{border-left-width:9px}
+  .nav button{font-size:.95rem;padding:7px 2px 9px}
+  .nav button .e{font-size:1.35rem}
+  .thead{position:relative;margin:0 -10px;padding:10px;gap:8px}
+  .thead .timer{font-size:2rem}
+  .settings label{flex:1 1 130px}
+  .settings button{flex:1 1 100%}
+  .rank li{grid-template-columns:30px auto 1fr auto;gap:6px}
+  .tile .n{font-size:1.5rem}
+}
+@media (hover:none){
+  .gpick button,.pickbtn,.nav button,.btn{min-height:48px}
+  .gpick button:active,.pickbtn:active,.btn:active{transform:scale(.99)}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>

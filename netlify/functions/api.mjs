@@ -28,14 +28,22 @@ const LEVELS = {
 // 기본 가공품은 원재료 2/3/4종 조합에 따라 30/40/50점.
 // 심화 가공품에는 기본 가공품이, 최종 완성품에는 심화 가공품이 반드시 포함된다.
 const PRODUCTS = {
-  cart:    { name: '건설 자재 묶음',   emoji: '🏗️', level: 1, points: 30, recipe: { wood: 1, iron: 1 } },
-  clothes: { name: '생활용품 세트',    emoji: '👕', level: 1, points: 40, recipe: { cotton: 1, food: 1, wood: 1 } },
-  fuel:    { name: '산업용 장비',      emoji: '⚙️', level: 1, points: 50, recipe: { oil: 1, iron: 1, cotton: 1, food: 1 } },
-  smart:   { name: '스마트 기기',      emoji: '📱', level: 2, points: 100, recipe: { cart: 1, iron: 1, oil: 1 } },
-  fashion: { name: '고급 의류',        emoji: '🧥', level: 2, points: 100, recipe: { clothes: 1, cotton: 1, wood: 1 } },
-  energy:  { name: '고효율 에너지 장치', emoji: '🔋', level: 2, points: 100, recipe: { fuel: 1, oil: 1, food: 1 } },
-  city:    { name: '첨단 도시 모형',    emoji: '🚀', level: 3, points: 200, recipe: { smart: 1, iron: 1, oil: 1, wood: 1 } },
-  civ:     { name: '지속 가능한 미래 세트', emoji: '👑', level: 3, points: 200, recipe: { fashion: 1, cotton: 1, food: 1, oil: 1 } },
+  // 기본 가공품: 재료 종류 수에 따라 30/40/50점
+  cart:      { name: '건설 자재 묶음',       emoji: '🏗️', level: 1, points: 30, recipe: { wood: 1, iron: 1 } },
+  clothes:   { name: '생활용품 세트',        emoji: '👕', level: 1, points: 40, recipe: { cotton: 1, food: 1, wood: 1 } },
+  fuel:      { name: '산업용 장비',          emoji: '⚙️', level: 1, points: 50, recipe: { oil: 1, iron: 1, cotton: 1, food: 1 } },
+  paper:     { name: '종이·포장재 묶음',      emoji: '📦', level: 1, points: 30, recipe: { wood: 1, cotton: 1 } },
+  farmkit:   { name: '농업 도구 세트',        emoji: '🌱', level: 1, points: 40, recipe: { iron: 1, food: 1, oil: 1 } },
+  textile:   { name: '기능성 섬유',          emoji: '🧵', level: 1, points: 50, recipe: { cotton: 1, wood: 1, food: 1, oil: 1 } },
+  smart:     { name: '스마트 기기',          emoji: '📱', level: 2, points: 100, recipe: { cart: 1, iron: 1, oil: 1 } },
+  fashion:   { name: '고급 의류',            emoji: '🧥', level: 2, points: 100, recipe: { clothes: 1, cotton: 1, wood: 1 } },
+  energy:    { name: '고효율 에너지 장치',     emoji: '🔋', level: 2, points: 100, recipe: { fuel: 1, oil: 1, food: 1 } },
+  medkit:    { name: '응급 구호 키트',        emoji: '🩹', level: 2, points: 100, recipe: { farmkit: 1, cotton: 1, oil: 1 } },
+  solar:     { name: '태양광 발전 설비',       emoji: '☀️', level: 2, points: 100, recipe: { textile: 1, iron: 1, food: 1 } },
+  city:      { name: '첨단 도시 모형',        emoji: '🚀', level: 3, points: 200, recipe: { smart: 1, iron: 1, oil: 1, wood: 1 } },
+  civ:       { name: '지속 가능한 미래 세트',  emoji: '👑', level: 3, points: 200, recipe: { fashion: 1, cotton: 1, food: 1, oil: 1 } },
+  greenCity: { name: '친환경 스마트 도시',     emoji: '🌳', level: 3, points: 200, recipe: { solar: 1, wood: 1, oil: 1, iron: 1 } },
+  careWorld: { name: '모두를 위한 안전한 세상', emoji: '🌍', level: 3, points: 200, recipe: { medkit: 1, food: 1, cotton: 1, wood: 1 } },
 };
 const ITEM_KEYS = [...RAW_KEYS, ...Object.keys(PRODUCTS)];
 const itemInfo = (k) => RAW[k] || PRODUCTS[k] || { name: k, emoji: '📦' };
