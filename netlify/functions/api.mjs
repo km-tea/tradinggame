@@ -37,9 +37,9 @@ const PRODUCTS = {
   smart:     { name: '스마트 기기',          emoji: '📱', level: 2, points: 100, recipe: { cart: 1, oil: 1 } },
   fashion:   { name: '고급 의류',            emoji: '🧥', level: 2, points: 100, recipe: { clothes: 1, cotton: 1 } },
   medkit:    { name: '응급 구호 키트',        emoji: '🩹', level: 2, points: 100, recipe: { farmkit: 1, oil: 1 } },
-  // 최종 완성품: 심화 가공품 1개 + 원재료 2종, 각 200점
-  city:      { name: '첨단 도시 모형',        emoji: '🚀', level: 3, points: 200, recipe: { smart: 1, iron: 1, wood: 1 } },
-  civ:       { name: '지속 가능한 미래 세트',  emoji: '👑', level: 3, points: 200, recipe: { fashion: 1, food: 1, oil: 1 } },
+  // 최종 완성품: 심화 가공품 2개 + 기본 재화 1종, 각 200점
+  city:      { name: '첨단 도시 모형',        emoji: '🚀', level: 3, points: 200, recipe: { smart: 1, medkit: 1, wood: 1 } },
+  civ:       { name: '지속 가능한 미래 세트',  emoji: '👑', level: 3, points: 200, recipe: { fashion: 1, medkit: 1, food: 1 } },
 };
 const ITEM_KEYS = [...RAW_KEYS, ...Object.keys(PRODUCTS)];
 const itemInfo = (k) => RAW[k] || PRODUCTS[k] || { name: k, emoji: '📦' };
@@ -636,7 +636,7 @@ async function teacherAction(client, action, b) {
       const item = String(b.item || '');
       const qty = clampInt(b.qty, 1, 999, 0);
       const game = await getGame(client);
-      if (game.phase !== 'lobby') fail(409, '자원은 게임 시작 전에 지급할 수 있어요. 게임이 끝났다면 먼저 새 게임 준비를 눌러 주세요.');
+      if (!['lobby', 'autarky', 'trade'].includes(game.phase)) fail(409, '게임이 끝난 뒤에는 자원을 지급할 수 없어요. 새 게임을 준비해 주세요.');
       if (groupId < 1 || groupId > game.group_count) fail(400, '현재 설정된 모둠 번호를 확인해 주세요.');
       if (!RAW[item]) fail(400, '지급할 자원을 골라 주세요.');
       await client.query('update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2', [groupId, item, qty]);
