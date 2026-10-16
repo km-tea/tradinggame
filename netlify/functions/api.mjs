@@ -130,6 +130,7 @@ alter table tg_groups add column if not exists mission_start_lv3 int not null de
 alter table tg_groups add column if not exists mission_start_partners int not null default 0;
 alter table tg_groups add column if not exists mission_start_accepts int not null default 0;
 alter table tg_groups add column if not exists shop_exchange_count int not null default 0;
+alter table tg_groups add column if not exists reject_streak int not null default 0;
 create table if not exists tg_inventory (
   group_id int not null references tg_groups(id) on delete cascade,
   item text not null,
@@ -263,7 +264,7 @@ function computeStats(all) {
     out[g.id] = {
       id: g.id, name: g.name, material: g.material, inventory, crafts,
       craftScore, autarkyScore, tradeScore, bonus, total: craftScore + bonus,
-      tradeCount: mine.length, mission, missionCount: g.mission_count || 0, shopExchangeCount: g.shop_exchange_count || 0, levelCounts: lv, partnersCount: partners.size, acceptCount: accepts,
+      tradeCount: mine.length, mission, missionCount: g.mission_count || 0, shopExchangeCount: g.shop_exchange_count || 0, rejectStreak: g.reject_streak || 0, levelCounts: lv, partnersCount: partners.size, acceptCount: accepts,
     };
   }
   return out;
@@ -377,7 +378,10 @@ async function craft(client, g, b) {
     }
     await client.query('insert into tg_crafts (group_id, product, phase) values ($1,$2,$3)', [g.id, key, game.phase]);
     await client.query('update tg_inventory set qty=qty+1 where group_id=$1 and item=$2', [g.id, key]);
-    return json({ ok: true, product: key, points: p.points ?? LEVELS[p.level].points });
+    const points = p.points ?? LEVELS[p.level].points;
+    // 기본·심화 가공품 제작 금액을 실제로 사용할 수 있는 달러 재고로 적립한다.
+    if (p.level <= 2) await client.query('update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2', [g.id, 'usd', points]);
+    return json({ ok: true, product: key, points, dollarsEarned: p.level <= 2 ? points : 0 });
   });
 }
 
@@ -390,10 +394,14 @@ async function propose(client, g, b) {
   const message = String(b.message ?? '').trim();
 
   if (!Number.isInteger(to) || to < 1 || to > (await getGame(client)).group_count || to === g.id) fail(400, '제안을 보낼 다른 모둠을 골라 주세요.');
-  if (!RAW[giveItem] || !RAW[wantItem]) fail(400, '바꿀 물품을 골라 주세요.');
-  if (giveItem === wantItem) fail(400, '서로 다른 물품끼리 바꿔야 해요.');
-  for (const q of [giveQty, wantQty]) {
-    if (!Number.isInteger(q) || q < 1 || q > LIMITS.maxQty) fail(400, `물품 개수는 1~${LIMITS.maxQty}개로 정해 주세요.`);
+  if (!RAW[giveItem] || !RAW[wantItem]) fail(400, '교환할 재화를 골라 주세요. 가공품은 무역할 수 없어요.');
+  if (giveItem === wantItem) fail(400, '서로 다른 재화끼리 바꿔야 해요.');
+  const dollarTrade = giveItem === 'usd' || wantItem === 'usd';
+  if (!dollarTrade) {
+    if (giveItem === 'usd' || wantItem === 'usd' || giveQty !== 1 || wantQty !== 1) fail(400, '물물교환은 기본 재화 1개와 다른 기본 재화 1개를 바꾸는 1대1 방식이에요.');
+  } else {
+    if (giveItem === 'usd' && (giveQty < 30 || giveQty > 300 || giveQty % 30 !== 0 || wantQty !== 1)) fail(400, '달러로 교환할 때는 30달러 단위로, 기본 재화 1개씩 제안해 주세요.');
+    if (wantItem === 'usd' && (wantQty < 30 || wantQty > 300 || wantQty % 30 !== 0 || giveQty !== 1)) fail(400, '달러로 교환할 때는 기본 재화 1개당 30달러 단위로 제안해 주세요.');
   }
   if (len(message) > LIMITS.maxText) fail(400, `무역 제안문은 ${LIMITS.maxText}글자까지 쓸 수 있어요.`);
 
@@ -417,14 +425,10 @@ async function propose(client, g, b) {
 }
 
 async function shopExchange(client, g, b) {
-  const giveItem1 = String(b.giveItem1 || '');
-  const giveItem2 = String(b.giveItem2 || '');
-  const giveQty1 = Number(b.giveQty1);
-  const giveQty2 = Number(b.giveQty2);
+  const mode = String(b.mode || 'resource');
+  if (!['resource', 'usd'].includes(mode)) fail(400, '교환 방식을 골라 주세요.');
   const wantItem = String(b.wantItem || '');
-  if (!RAW[giveItem1] || !RAW[giveItem2] || !RAW[wantItem]) fail(400, '내놓을 재화 두 종류와 받을 재화를 골라 주세요.');
-  if (wantItem === giveItem1 || wantItem === giveItem2) fail(400, '받을 재화는 내놓는 재화와 다른 종류여야 해요.');
-  if (!Number.isInteger(giveQty1) || !Number.isInteger(giveQty2) || giveQty1 < 0 || giveQty2 < 0 || giveQty1 + giveQty2 !== 2) fail(400, '내놓을 재화의 개수 합계는 반드시 2개여야 해요.');
+  if (!RAW[wantItem] || wantItem === 'usd') fail(400, '받을 기본 재화를 골라 주세요. 가공품과 달러는 받을 수 없어요.');
 
   return tx(client, async () => {
     const { rows } = await client.query('select phase, paused from tg_game where id=1 for update');
@@ -434,22 +438,23 @@ async function shopExchange(client, g, b) {
     const used = groupRows.rows[0]?.shop_exchange_count ?? 0;
     if (used >= 5) fail(400, '이번 게임에서 상점 교환을 모두 사용했어요. 모둠별 교환은 게임당 5번까지 가능해요.');
 
-    const inv = await client.query(
-      'select item, qty from tg_inventory where group_id=$1 and item = any($2::text[]) order by item for update',
-      [g.id, [giveItem1, giveItem2, wantItem]]
-    );
-    const quantities = Object.fromEntries(inv.rows.map((row) => [row.item, row.qty]));
-    const required = new Map();
-    for (const [item, qty] of [[giveItem1, giveQty1], [giveItem2, giveQty2]]) required.set(item, (required.get(item) || 0) + qty);
-    for (const [item, qty] of required) {
-      if ((quantities[item] ?? 0) < qty) fail(400, `${RAW[item].name}이(가) 부족해요. 현재 ${(quantities[item] ?? 0)}개 있어요.`);
+    if (mode === 'usd') {
+      const inv = await client.query('select item, qty from tg_inventory where group_id=$1 and item = any($2::text[]) for update', [g.id, ['usd', wantItem]]);
+      const quantities = Object.fromEntries(inv.rows.map((row) => [row.item, row.qty]));
+      if ((quantities.usd ?? 0) < 30) fail(400, `달러가 부족해요. 30달러가 필요하고 현재 ${quantities.usd ?? 0}달러 있어요.`);
+      await client.query('update tg_inventory set qty=qty-30 where group_id=$1 and item=$2', [g.id, 'usd']);
+      await client.query('update tg_inventory set qty=qty+1 where group_id=$1 and item=$2', [g.id, wantItem]);
+    } else {
+      const giveItem = String(b.giveItem1 || '');
+      if (!RAW[giveItem] || giveItem === 'usd' || giveItem === wantItem) fail(400, '서로 다른 기본 재화를 선택해 주세요. 달러 교환은 별도 메뉴에서 이용해요.');
+      const inv = await client.query('select item, qty from tg_inventory where group_id=$1 and item = any($2::text[]) for update', [g.id, [giveItem, wantItem]]);
+      const quantities = Object.fromEntries(inv.rows.map((row) => [row.item, row.qty]));
+      if ((quantities[giveItem] ?? 0) < 2) fail(400, `${RAW[giveItem].name}이(가) 부족해요. 현재 ${quantities[giveItem] ?? 0}개 있어요.`);
+      await client.query('update tg_inventory set qty=qty-2 where group_id=$1 and item=$2', [g.id, giveItem]);
+      await client.query('update tg_inventory set qty=qty+1 where group_id=$1 and item=$2', [g.id, wantItem]);
     }
-    for (const [item, qty] of [[giveItem1, giveQty1], [giveItem2, giveQty2]]) {
-      if (qty > 0) await client.query('update tg_inventory set qty=qty-$3 where group_id=$1 and item=$2', [g.id, item, qty]);
-    }
-    await client.query('update tg_inventory set qty=qty+1 where group_id=$1 and item=$2', [g.id, wantItem]);
     const updated = await client.query('update tg_groups set shop_exchange_count=shop_exchange_count+1 where id=$1 returning shop_exchange_count', [g.id]);
-    return json({ ok: true, giveItem1, giveQty1, giveItem2, giveQty2, wantItem, wantQty: 1, exchangesUsed: updated.rows[0].shop_exchange_count, exchangesRemaining: Math.max(0, 5 - updated.rows[0].shop_exchange_count) });
+    return json({ ok: true, mode, wantItem, exchangesUsed: updated.rows[0].shop_exchange_count, exchangesRemaining: Math.max(0, 5 - updated.rows[0].shop_exchange_count) });
   });
 }
 
@@ -469,11 +474,15 @@ async function respond(client, g, b) {
     if (t.status !== 'pending') fail(409, '이미 처리된 제안이에요.');
 
     if (!accept) {
+      const groupLock = await client.query('select reject_streak from tg_groups where id=$1 for update', [g.id]);
+      const streak = groupLock.rows[0]?.reject_streak ?? 0;
+      if (streak >= 3) fail(400, '무역 제안을 3번 연속 거절했어요. 이번 제안은 수락해야 해요.');
       await client.query(
         "update tg_trades set status='rejected', reply=$2, resolved_at=now() where id=$1",
         [id, reply || null]
       );
-      return { status: 'rejected' };
+      await client.query('update tg_groups set reject_streak=reject_streak+1 where id=$1', [g.id]);
+      return { status: 'rejected', rejectStreak: streak + 1 };
     }
 
     // 두 모둠의 창고를 항상 같은 순서로 잠가서 서로 막히는 일을 방지
@@ -504,6 +513,7 @@ async function respond(client, g, b) {
       "update tg_trades set status='accepted', reply=$2, resolved_at=now() where id=$1",
       [id, reply]
     );
+    await client.query('update tg_groups set reject_streak=0 where id=$1', [g.id]);
     return { status: 'accepted' };
   });
 
@@ -527,26 +537,25 @@ async function wipe(client) {
   await client.query('delete from tg_trades');
   await client.query('delete from tg_crafts');
   await client.query('update tg_inventory set qty=0');
-  await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0');
+  await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0, reject_streak=0');
 }
-// 게임 시작 시 모둠마다 주요 핵심 재화(특산품) 12개와 보조 자원 2종(3개·2개)을 지급한다.
+// 게임 시작 시 특산품 8개와 무작위 보조 자원 2종(2개·1개)만 지급한다. 달러는 제작으로 얻는다.
 async function grantInitialResources(client) {
   for (const groupId of (await client.query('select id from tg_groups where id <= (select group_count from tg_game where id=1) order by id')).rows.map(r => r.id)) {
     const group = (await client.query('select material from tg_groups where id=$1', [groupId])).rows[0];
     if (!group) continue;
     await client.query(
       'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2',
-      [groupId, group.material, 12]
+      [groupId, group.material, 8]
     );
-    await client.query('update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2', [groupId, 'usd', 100]);
     const bonusItems = shuffle(RAW_KEYS.filter((item) => item !== group.material && item !== 'usd')).slice(0, 2);
     await client.query(
       'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2',
-      [groupId, bonusItems[0], 3]
+      [groupId, bonusItems[0], 2]
     );
     await client.query(
       'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2',
-      [groupId, bonusItems[1], 2]
+      [groupId, bonusItems[1], 1]
     );
   }
 }
@@ -567,7 +576,7 @@ async function teacherAction(client, action, b) {
         await client.query('delete from tg_crafts where group_id > $1', [groupCount]);
         await client.query('update tg_inventory set qty=0 where group_id > $1', [groupCount]);
         for (let i = 0; i < groupCount; i++) {
-          await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0 where id=$1', [i + 1]);
+          await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0, reject_streak=0 where id=$1', [i + 1]);
         }
         await grantInitialResources(client);
         await client.query(
