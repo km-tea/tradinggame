@@ -14,6 +14,7 @@ const RAW = {
   cotton: { name: '면화',   emoji: '☁️' },
   food:   { name: '식량',   emoji: '🌾' },
   oil:    { name: '석유',   emoji: '🛢️' },
+  usd:    { name: '달러',   emoji: '💵' },
 };
 const RAW_KEYS = Object.keys(RAW);
 const MAX_GROUP_COUNT = 10;
@@ -28,34 +29,23 @@ const LEVELS = {
 // 기본·심화 가공품은 재료 2종, 최종 완성품은 재료 3종으로 제작한다.
 // 심화 가공품에는 기본 가공품이, 최종 완성품에는 심화 가공품이 반드시 포함된다.
 const PRODUCTS = {
-  // 기본 가공품: 모두 원재료 2종, 각 30점
+  // 기본 가공품: 원재료 2종 중심, 각 $30~$50
   cart:      { name: '건설 자재 묶음',       emoji: '🏗️', level: 1, points: 30, recipe: { wood: 1, iron: 1 } },
   clothes:   { name: '생활용품 세트',        emoji: '👕', level: 1, points: 30, recipe: { cotton: 1, food: 1 } },
   paper:     { name: '종이·포장재 묶음',      emoji: '📦', level: 1, points: 30, recipe: { wood: 1, cotton: 1 } },
   farmkit:   { name: '농업 도구 세트',        emoji: '🌱', level: 1, points: 30, recipe: { iron: 1, food: 1 } },
   synthetics:{ name: '합성 섬유',             emoji: '🧵', level: 1, points: 50, recipe: { oil: 1, cotton: 1 } },
   supplykit: { name: '생활 기반 꾸러미',       emoji: '🧰', level: 1, points: 50, recipe: { wood: 1, iron: 1, food: 1 } },
-  // 심화 가공품: 기본 가공품 1개 + 원재료 1종, 각 100점
+  // 심화 가공품: 기본 가공품 1개 + 원재료 1종, 각 $100
   smart:     { name: '스마트 기기',          emoji: '📱', level: 2, points: 100, recipe: { cart: 1, oil: 1 } },
   fashion:   { name: '고급 의류',            emoji: '🧥', level: 2, points: 100, recipe: { clothes: 1, cotton: 1 } },
   medkit:    { name: '응급 구호 키트',        emoji: '🩹', level: 2, points: 100, recipe: { farmkit: 1, oil: 1 } },
-  // 최종 완성품: 심화 가공품 2개 + 기본 재화 1종, 각 200점
+  // 최종 완성품: 심화 가공품 2개 + 기본 재화 1종, 각 $200
   city:      { name: '첨단 도시 모형',        emoji: '🚀', level: 3, points: 200, recipe: { smart: 1, medkit: 1, wood: 1 } },
   civ:       { name: '지속 가능한 미래 세트',  emoji: '👑', level: 3, points: 200, recipe: { fashion: 1, medkit: 1, food: 1 } },
 };
 const ITEM_KEYS = [...RAW_KEYS, ...Object.keys(PRODUCTS)];
 const itemInfo = (k) => RAW[k] || PRODUCTS[k] || { name: k, emoji: '📦' };
-
-const MISSIONS = {
-  partners3: { title: '무역왕',       emoji: '🌏', desc: '서로 다른 3개 모둠과 무역 성공하기',        bonus: 40, target: 3 },
-  accept2:   { title: '친절한 상인',  emoji: '💌', desc: '다른 모둠의 제안을 2번 수락하기',           bonus: 30, target: 2 },
-  politeTrade: { title: '친절한 교환가', emoji: '🙏', desc: '공손한 표현을 넣어 무역을 제안하기', bonus: 20, target: 1 },
-  lv3:       { title: '도전자',       emoji: '🚀', desc: '난이도 3 최종 완성품 1개 만들기',           bonus: 50, target: 1 },
-  allLevels: { title: '전 단계 정복', emoji: '🏅', desc: '난이도 1·2·3 물품을 각각 1개 이상 만들기', bonus: 60, target: 3 },
-  lv2x2:     { title: '기술자',       emoji: '🔧', desc: '난이도 2 심화 가공품 2개 만들기',           bonus: 40, target: 2 },
-  lv1x1:     { title: '첫걸음 미션',  emoji: '🌱', desc: '기본 가공품 1개 만들기',                 bonus: 10, target: 1 },
-  lv1x3:     { title: '기초 튼튼',    emoji: '🧱', desc: '난이도 1 기본 가공품 3개 만들기',           bonus: 30, target: 3 },
-};
 
 const LIMITS = { minProposal: 10, minReply: 5, maxText: 200, maxQty: 5, maxPending: 4 };
 
@@ -243,25 +233,6 @@ async function loadAll(client) {
   return { game, groups, inv, crafts, trades };
 }
 
-function missionInfo(key, ctx) {
-  const m = MISSIONS[key];
-  if (!m) return null;
-  let progress = 0;
-  switch (key) {
-    case 'partners3': progress = Math.max(0, ctx.partners - ctx.startPartners); break;
-    case 'accept2':   progress = Math.max(0, ctx.accepts - ctx.startAccepts); break;
-    case 'lv3':       progress = Math.max(0, ctx.lv[3] - ctx.startLv[3]); break;
-    case 'allLevels': progress = [1, 2, 3].filter((l) => ctx.lv[l] > ctx.startLv[l]).length; break;
-    case 'lv2x2':     progress = Math.max(0, ctx.lv[2] - ctx.startLv[2]); break;
-    case 'lv1x1':     progress = Math.max(0, ctx.lv[1] - ctx.startLv[1]); break;
-    case 'lv1x3':     progress = Math.max(0, ctx.lv[1] - ctx.startLv[1]); break;
-  }
-  return {
-    key, title: m.title, emoji: m.emoji, desc: m.desc, bonus: ((ctx.missionCount || 0) + 1) * 10, target: m.target,
-    progress: Math.min(progress, m.target), done: progress >= m.target,
-  };
-}
-
 function computeStats(all) {
   const accepted = all.trades.filter((t) => t.status === 'accepted');
   const out = {};
@@ -286,10 +257,8 @@ function computeStats(all) {
     const mine = accepted.filter((t) => t.from_group === g.id || t.to_group === g.id);
     const partners = new Set(mine.map((t) => (t.from_group === g.id ? t.to_group : t.from_group)));
     const accepts = accepted.filter((t) => t.to_group === g.id).length;
-    const startLv = { 1: g.mission_start_lv1 || 0, 2: g.mission_start_lv2 || 0, 3: g.mission_start_lv3 || 0 };
-    const politeTradeCount = all.trades.filter((t) => t.from_group === g.id && /부탁드립|부탁합니다|바꿔\s*주실|교환해\s*주실|가능할까요|괜찮으시다면|감사합니다|안녕하세요/.test(t.message || '')).length;
-    const mission = g.mission ? missionInfo(g.mission, { lv, partners: partners.size, accepts, politeTradeCount, missionCount: g.mission_count || 0, startLv, startPartners: g.mission_start_partners || 0, startAccepts: g.mission_start_accepts || 0 }) : null;
-    const bonus = (g.mission_bonus || 0) + (mission && mission.done ? mission.bonus : 0);
+    const mission = null;
+    const bonus = 0;
 
     out[g.id] = {
       id: g.id, name: g.name, material: g.material, inventory, crafts,
@@ -300,28 +269,6 @@ function computeStats(all) {
   return out;
 }
 
-// 미션 달성 시 보상을 누적하고 다음 미션을 자동 배정한다. 첫 미션은 쉬운 기본 가공품 1개 만들기이며, 이후 보상은 10점씩 증가한다.
-async function advanceCompletedMissions(client) {
-  await tx(client, async () => {
-    await client.query('select id from tg_groups where id <= 10 order by id for update');
-    const all = await loadAll(client);
-    const stats = computeStats(all);
-    for (const group of all.groups) {
-      const stat = stats[group.id];
-      if (!stat?.mission?.done) continue;
-      const reward = stat.mission.bonus;
-      const nextCount = (group.mission_count || 0) + 1;
-      const pool = Object.keys(MISSIONS).filter((key) => key !== 'lv1x1' && key !== group.mission);
-      const nextMission = pool[randomInt(0, pool.length)];
-      const levels = stat.levelCounts || { 1: 0, 2: 0, 3: 0 };
-      await client.query(
-        'update tg_groups set mission=$2, mission_count=$3, mission_bonus=mission_bonus+$4, mission_start_lv1=$5, mission_start_lv2=$6, mission_start_lv3=$7, mission_start_partners=$8, mission_start_accepts=$9 where id=$1',
-        [group.id, nextMission, nextCount, reward, levels[1], levels[2], levels[3], stat.partnersCount || 0, stat.acceptCount || 0]
-      );
-    }
-  });
-}
-
 const tradeOut = (t) => ({
   id: t.id, from: t.from_group, to: t.to_group,
   giveItem: t.give_item, giveQty: t.give_qty, wantItem: t.want_item, wantQty: t.want_qty,
@@ -330,7 +277,7 @@ const tradeOut = (t) => ({
 
 function publicConfig(groups) {
   return {
-    raw: RAW, products: PRODUCTS, levels: LEVELS, missions: MISSIONS, limits: LIMITS,
+    raw: RAW, products: PRODUCTS, levels: LEVELS, limits: LIMITS,
     groups: groups.map((g) => ({ id: g.id, name: g.name, material: g.material })),
   };
 }
@@ -345,7 +292,6 @@ async function state(client, req) {
     await client.query('update tg_groups set last_seen=now() where id=$1', [g.id]);
   }
 
-  await advanceCompletedMissions(client);
   const all = await loadAll(client);
   const stats = computeStats(all);
   const ranked = Object.values(stats).sort((a, b) => b.total - a.total || a.id - b.id);
@@ -404,7 +350,6 @@ async function state(client, req) {
     out.results = ranked.map((s, i) => ({
       rank: i + 1, id: s.id, name: s.name, material: s.material,
       craftScore: s.craftScore, bonus: s.bonus, total: s.total,
-      mission: s.mission && { title: s.mission.title, emoji: s.mission.emoji, desc: s.mission.desc, done: s.mission.done },
     }));
   }
   return json(out);
@@ -451,7 +396,6 @@ async function propose(client, g, b) {
     if (!Number.isInteger(q) || q < 1 || q > LIMITS.maxQty) fail(400, `물품 개수는 1~${LIMITS.maxQty}개로 정해 주세요.`);
   }
   if (len(message) > LIMITS.maxText) fail(400, `무역 제안문은 ${LIMITS.maxText}글자까지 쓸 수 있어요.`);
-  if (g.mission === 'politeTrade' && !/부탁드립|부탁합니다|바꿔\s*주실|교환해\s*주실|가능할까요|괜찮으시다면|감사합니다|안녕하세요/.test(message)) fail(400, '친절한 교환가 미션 중에는 “안녕하세요”, “교환해 주실 수 있을까요?”, “부탁드립니다”처럼 공손한 표현을 넣어 글을 써야 해요.');
 
   const game = await getGame(client);
   if (game.phase !== 'trade' || game.paused) fail(403, game.paused ? '선생님이 게임을 잠시 멈췄어요.' : '지금은 무역 시간이 아니에요.');
@@ -594,7 +538,8 @@ async function grantInitialResources(client) {
       'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2',
       [groupId, group.material, 12]
     );
-    const bonusItems = shuffle(RAW_KEYS.filter((item) => item !== group.material)).slice(0, 2);
+    await client.query('update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2', [groupId, 'usd', 100]);
+    const bonusItems = shuffle(RAW_KEYS.filter((item) => item !== group.material && item !== 'usd')).slice(0, 2);
     await client.query(
       'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2',
       [groupId, bonusItems[0], 3]
@@ -622,7 +567,7 @@ async function teacherAction(client, action, b) {
         await client.query('delete from tg_crafts where group_id > $1', [groupCount]);
         await client.query('update tg_inventory set qty=0 where group_id > $1', [groupCount]);
         for (let i = 0; i < groupCount; i++) {
-          await client.query('update tg_groups set mission=$2, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0 where id=$1', [i + 1, 'lv1x1']);
+          await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0 where id=$1', [i + 1]);
         }
         await grantInitialResources(client);
         await client.query(

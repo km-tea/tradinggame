@@ -107,6 +107,7 @@ textarea{resize:vertical;min-height:84px}
 .recipe .big{font-size:2.2rem;line-height:1}
 .recipe .ings{display:flex;flex-wrap:wrap;gap:6px}
 
+.decision-overlay{position:fixed;inset:0;z-index:1000;background:rgba(15,23,42,.72);display:grid;place-items:center;padding:18px}.decision-card{width:min(560px,100%);background:#fff;border:4px solid var(--ink);border-radius:18px;padding:22px;text-align:center;box-shadow:0 10px 0 rgba(0,0,0,.25)}.decision-card h2{margin:8px 0}.decision-card .deal{justify-content:center}
 /* ---------- 편지(무역 제안) ---------- */
 .letter{--c:#888;position:relative;background:var(--paper);border:3px solid var(--ink);border-radius:6px;padding:20px 16px 14px;margin:18px 0;box-shadow:0 5px 0 var(--ink)}
 .letter::before{content:'';position:absolute;left:-3px;right:-3px;top:-3px;height:9px;
@@ -148,12 +149,7 @@ textarea{resize:vertical;min-height:84px}
 .mail-scroll::-webkit-scrollbar-track{background:#f8fafc}
 .feed{margin:6px 0;padding:6px 10px;border-bottom:2px dotted #b4c0d4;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 
-/* ---------- 미션·순위 ---------- */
-.mission{background:var(--sand);text-align:center;padding:22px 16px;position:relative}
-.mission .me{font-size:3.4rem;line-height:1}
-.mission h3{font-size:1.8rem;margin-top:6px}
-.mission .bonus{display:inline-block;background:var(--ink);color:#fff;border-radius:10px;padding:0 12px;font-family:var(--display);font-size:1.2rem}
-.mission .done{position:absolute;right:14px;top:14px;transform:rotate(8deg);border:4px solid var(--ok);color:var(--ok);border-radius:12px;padding:0 12px;font-family:var(--display);font-size:1.5rem;background:#fff}
+/* ---------- 순위 ---------- */
 .rank{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .rank li{display:grid;grid-template-columns:34px auto 1fr auto;gap:10px;align-items:center;padding:6px 8px;border:3px solid var(--ink);border-radius:12px;background:#fff}
 .rank li.me{background:var(--sand)}
@@ -355,12 +351,12 @@ function compareHTML(c) {
   const max = Math.max(c.autarky, c.trade, 1);
   const w = (n) => Math.max(n > 0 ? 3 : 0, Math.round((n / max) * 100));
   const text = c.autarky === 0
-    ? `자급자족만 할 때는 아무도 물품을 만들지 못했어요. 무역을 열자 반 전체가 <b>${c.trade}점</b>을 만들었어요.`
-    : `자급자족 때 ${c.autarky}점이던 물품 점수가 무역을 한 뒤 ${c.trade}점이 됐어요.`;
+    ? `자급자족만 할 때는 물품을 만들기 어려웠어요. 무역을 열자 반 전체가 <b>$${c.trade}</b>의 물품을 만들었어요.`
+    : `자급자족 때 $${c.autarky}이던 제작 금액이 무역을 한 뒤 $${c.trade}이 됐어요.`;
   return `<section class="card"><h3>무역을 하기 전과 후</h3>
-    <div class="cmp"><span>🚫 자급자족</span><div class="bar ${c.autarky ? '' : 'zero'}"><i style="width:${w(c.autarky)}%"></i></div><b>${c.autarky}점</b></div>
-    <div class="cmp"><span>🤝 무역 시간</span><div class="bar trade ${c.trade ? '' : 'zero'}"><i style="width:${w(c.trade)}%"></i></div><b>${c.trade}점</b></div>
-    <p>${text}</p><p class="small">참여 모둠이 만든 물품 점수를 모두 더한 값이에요. 미션 보너스는 뺐어요.</p></section>`;
+    <div class="cmp"><span>🚫 자급자족</span><div class="bar ${c.autarky ? '' : 'zero'}"><i style="width:${w(c.autarky)}%"></i></div><b>$${c.autarky}</b></div>
+    <div class="cmp"><span>🤝 무역 시간</span><div class="bar trade ${c.trade ? '' : 'zero'}"><i style="width:${w(c.trade)}%"></i></div><b>$${c.trade}</b></div>
+    <p>${text}</p><p class="small">참여 모둠이 만든 물품의 금액을 모두 더한 값이에요.</p></section>`;
 }
 
 function mailHTML(t, extra) {
@@ -445,14 +441,13 @@ function buildStudentShell() {
     <main>
       <section id="tab-craft"><div id="craftBanner"></div><div id="craftInv"></div><div id="craftRecipes"></div></section>
       <section id="tab-trade"><div id="trLock"></div><div id="trInv"></div><div id="trMarket"></div><div id="trShop"></div><div id="trForm"></div><div id="trInbox"></div><div id="trOut"></div><div id="trFeed"></div></section>
-      <section id="tab-mission"><div id="missionCard"></div><div id="myCrafts"></div></section>
       <section id="tab-board"><div id="final"></div><div id="board"></div></section>
     </main>
     <nav id="nav" class="nav"></nav></div>`;
   S.sigs = {}; S.shell = 'student';
 }
 function showTab() {
-  ['craft', 'trade', 'mission', 'board'].forEach((t) => { const el = $('#tab-' + t); if (el) el.hidden = S.tab !== t; });
+  ['craft', 'trade', 'board'].forEach((t) => { const el = $('#tab-' + t); if (el) el.hidden = S.tab !== t; });
 }
 
 function notify(st) {
@@ -465,7 +460,6 @@ function notify(st) {
       if (sn.out[t.id] === 'pending' && t.status === 'accepted') toast(`✅ ${t.to}모둠이 제안을 수락했어요! 창고를 확인해요.`, 'ok');
       if (sn.out[t.id] === 'pending' && t.status === 'rejected') toast(`❌ ${t.to}모둠이 거절했어요. 답장을 읽어 보세요.`, 'warn');
     });
-    if (st.me.bonus > sn.bonus) toast(`🎯 미션 달성! +${st.me.bonus - sn.bonus}점`, 'ok');
     if (sn.phase !== st.game.phase) {
       const m = { autarky: ['🚫 자급자족이 시작됐어요!', ''], trade: ['🤝 무역이 열렸어요!', 'ok'], finished: ['🏁 게임이 끝났어요!', ''] }[st.game.phase];
       if (m) toast(m[0], m[1]);
@@ -493,10 +487,10 @@ function renderStudent() {
     <span class="sp"></span>
     ${S.offline ? '<span class="offline">연결 확인 중…</span>' : ''}
     <div style="text-align:center"><span class="pill">${PHASE[phase]}</span><div class="timer" data-timer>--:--</div></div>
-    <div class="score">${me.total}<small>점</small></div>${S.teacherReturn ? '<button class="btn sea sm" data-act="back-teacher">교사 화면으로</button>' : ''}`);
+    <div class="score">$${me.total}</div>${S.teacherReturn ? '<button class="btn sea sm" data-act="back-teacher">교사 화면으로</button>' : ''}`);
 
   mount('nav', { tab: S.tab, n: st.incoming.length }, () => [
-    ['craft', '🎒', '만들기'], ['trade', '🤝', '무역'], ['mission', '🎯', '미션'], ['board', '🏆', '순위'],
+    ['craft', '🎒', '만들기'], ['trade', '🤝', '무역'], ['board', '🏆', '순위'],
   ].map(([k, e, l]) => `<button data-act="tab" data-t="${k}" class="${S.tab === k ? 'on' : ''}"><span class="e">${e}</span>${l}
     ${k === 'trade' && st.incoming.length ? `<span class="badge">${st.incoming.length}</span>` : ''}</button>`).join(''));
 
@@ -512,7 +506,7 @@ function renderStudent() {
     const canPlay = !st.game.paused && (phase === 'autarky' || phase === 'trade');
     return [1, 2, 3].map((lv) => {
       const list = Object.entries(S.cfg.products).filter(([, p]) => p.level === lv);
-      return `<div class="lvhead"><h3>난이도 ${lv} · ${esc(S.cfg.levels[lv].name)}</h3><span class="pts">${lv === 1 ? '30~50' : S.cfg.levels[lv].points}점</span></div>
+      return `<div class="lvhead"><h3>난이도 ${lv} · ${esc(S.cfg.levels[lv].name)}</h3><span class="pts">${lv === 1 ? '$30~$50' : '$' + S.cfg.levels[lv].points}</span></div>
       <div class="recipes">${list.map(([key, p]) => {
         const ings = Object.entries(p.recipe).map(([k, n]) => {
           const have = me.inventory[k] ?? 0;
@@ -520,7 +514,7 @@ function renderStudent() {
         }).join('');
         const can = canPlay && Object.entries(p.recipe).every(([k, n]) => (me.inventory[k] ?? 0) >= n);
         return `<div class="recipe lv${lv}"><div class="top"><span class="big">${p.emoji}</span>
-          <div><b>${esc(p.name)}</b><br><small>${pts(p)}점 · 지금까지 ${me.crafts[key] || 0}개 만듦</small></div></div>
+          <div><b>${esc(p.name)}</b><br><small>${pts(p)}$ · 지금까지 ${me.crafts[key] || 0}개 만듦</small></div></div>
           <div class="ings">${ings}</div>
           <button class="btn go" data-act="craft" data-p="${key}" ${can ? '' : 'disabled'}>${can ? '만들기' : '재료가 모자라요'}</button></div>`;
       }).join('')}</div>`;
@@ -548,29 +542,28 @@ function renderStudent() {
   mount('trShop', { phase, paused: st.game.paused, inv: me.inventory, give1: S.drafts.shopGive1, give2: S.drafts.shopGive2, want: S.drafts.shopWant, qty1: S.drafts.shopQty1, qty2: S.drafts.shopQty2, exchanges: me.shopExchangeCount || 0 }, () => {
     const keys = Object.keys(S.cfg.raw);
     if (!S.drafts.shopGive1) S.drafts.shopGive1 = me.material;
-    if (!S.drafts.shopGive2) S.drafts.shopGive2 = S.drafts.shopGive1;
+    S.drafts.shopGive2 = S.drafts.shopGive1;
     if (!S.drafts.shopWant || S.drafts.shopWant === S.drafts.shopGive1) S.drafts.shopWant = keys.find((k) => k !== S.drafts.shopGive1);
-    if (S.drafts.shopQty1 === undefined) S.drafts.shopQty1 = '2';
-    if (S.drafts.shopQty2 === undefined) S.drafts.shopQty2 = '0';
+    S.drafts.shopQty1 = '2';
+    S.drafts.shopQty2 = '0';
     const opts = (selected) => keys.map((k) => `<option value="${k}" ${k === selected ? 'selected' : ''}>${raw(k).emoji} ${esc(raw(k).name)} · ${me.inventory[k] ?? 0}개 보유</option>`).join('');
     const active = phase === 'trade' && !st.game.paused;
-    const q1 = Math.max(0, Number(S.drafts.shopQty1) || 0), q2 = Math.max(0, Number(S.drafts.shopQty2) || 0);
-    const totalCorrect = q1 + q2 === 2 && Number.isInteger(q1) && Number.isInteger(q2);
-    const enough = S.drafts.shopGive1 === S.drafts.shopGive2 ? (me.inventory[S.drafts.shopGive1] ?? 0) >= q1 + q2 : (me.inventory[S.drafts.shopGive1] ?? 0) >= q1 && (me.inventory[S.drafts.shopGive2] ?? 0) >= q2;
+    const q1 = 2, q2 = 0;
+    const enough = (me.inventory[S.drafts.shopGive1] ?? 0) >= 2;
     const exchangesUsed = me.shopExchangeCount || 0;
     const exchangesRemaining = Math.max(0, 5 - exchangesUsed);
-    return `<section class="card"><h3>🏪 국내 생산</h3><p class="hint">내놓을 재화 두 종류와 각각의 개수를 선택하세요. 두 재화의 개수 합계가 반드시 2개여야 하며, 교환할 때마다 원하는 재화 1개를 받아요.</p><div class="banner"><b>이번 게임 상점 이용: ${exchangesUsed}/5회</b> · ${exchangesRemaining > 0 ? `${exchangesRemaining}회 남음` : '이용 횟수를 모두 사용했어요.'}</div>
+    return `<section class="card"><h3>🏪 국내 생산</h3><p class="hint">재화 한 종류 2개를 내고, 다른 종류의 재화 1개를 받아요. 달러도 교환에 사용할 수 있어요.</p><div class="banner"><b>이번 게임 상점 이용: ${exchangesUsed}/5회</b> · ${exchangesRemaining > 0 ? `${exchangesRemaining}회 남음` : '이용 횟수를 모두 사용했어요.'}</div>
       <div class="shop-panel"><div class="shop-form" style="grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)">
-        <label>내놓을 재화 ①<select id="shopGive1" data-draft="shopGive1">${opts(S.drafts.shopGive1)}</select><input type="number" id="shopQty1" data-draft="shopQty1" min="0" max="2" step="1" value="${esc(String(S.drafts.shopQty1))}" aria-label="첫 번째 재화 개수" style="width:100%;margin-top:5px;padding:8px;border:2px solid var(--ink);border-radius:9px" /></label>
+        <label>내놓을 재화 2개<select id="shopGive1" data-draft="shopGive1">${opts(S.drafts.shopGive1)}</select><p class="small">수량: 2개</p></label>
         <div class="swap-label" style="font-size:1.6rem;text-align:center;padding-bottom:6px">➡️</div>
-        <label>내놓을 재화 ②<select id="shopGive2" data-draft="shopGive2">${opts(S.drafts.shopGive2)}</select><input type="number" id="shopQty2" data-draft="shopQty2" min="0" max="2" step="1" value="${esc(String(S.drafts.shopQty2))}" aria-label="두 번째 재화 개수" style="width:100%;margin-top:5px;padding:8px;border:2px solid var(--ink);border-radius:9px" /></label>
+        <input type="hidden" id="shopQty1" value="2"><input type="hidden" id="shopGive2" value="${esc(S.drafts.shopGive1)}"><input type="hidden" id="shopQty2" value="0">
       </div>
       <label style="display:block;font-weight:700;margin-top:10px">받을 재화 1개<select id="shopWant" data-draft="shopWant" style="width:100%;margin-top:4px;padding:9px;border:2px solid var(--ink);border-radius:9px;background:white">${opts(S.drafts.shopWant)}</select></label>
-      <p class="hint">내놓기: ${raw(S.drafts.shopGive1).emoji} ${esc(raw(S.drafts.shopGive1).name)} ${q1}개 + ${raw(S.drafts.shopGive2).emoji} ${esc(raw(S.drafts.shopGive2).name)} ${q2}개 = ${q1 + q2}개 → 받기: ${raw(S.drafts.shopWant).emoji} ${esc(raw(S.drafts.shopWant).name)} 1개</p>
-      ${!totalCorrect ? '<p class="muted">내놓을 두 재화의 개수 합계를 정확히 2개로 맞춰 주세요.</p>' : ''}
-      ${totalCorrect && !enough ? '<p class="muted">선택한 재화의 보유량이 부족해요.</p>' : ''}
+      <p class="hint">내놓기: ${raw(S.drafts.shopGive1).emoji} ${esc(raw(S.drafts.shopGive1).name)} 2개 → 받기: ${raw(S.drafts.shopWant).emoji} ${esc(raw(S.drafts.shopWant).name)} 1개</p>
+      
+      ${!enough ? '<p class="muted">선택한 재화가 2개 이상 있어야 해요.</p>' : ''}
       ${!active ? `<p class="muted">상점은 무역 시간에 게임이 진행 중일 때 이용할 수 있어요.</p>` : ''}
-      <button class="btn go" data-act="shop-exchange" ${active && enough && totalCorrect && S.drafts.shopWant !== S.drafts.shopGive1 && S.drafts.shopWant !== S.drafts.shopGive2 && exchangesRemaining > 0 ? '' : 'disabled'}>🔄 재화 2개를 내고 1개 받기</button></div></section>`;
+      <button class="btn go" data-act="shop-exchange" ${active && enough && S.drafts.shopWant !== S.drafts.shopGive1 && exchangesRemaining > 0 ? '' : 'disabled'}>🔄 재화 2개를 내고 1개 받기</button></div></section>`;
   });
   mount('trInbox', { phase, paused: st.game.paused, inc: st.incoming.map((t) => [t.id, t.status, t.reply]), inv: me.inventory }, () => {
     const canReply = phase === 'trade' && !st.game.paused;
@@ -602,7 +595,7 @@ function renderStudent() {
     if (!S.drafts.wq) S.drafts.wq = '1';
     const opts = (sel) => Object.entries(S.cfg.raw).map(([k, v]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${v.emoji} ${esc(v.name)}</option>`).join('');
     const qty = (sel) => [1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${String(n) === String(sel) ? 'selected' : ''}>${n}개</option>`).join('');
-    return `<section class="card"><h3>🤝 무역 제안 보내기</h3><p class="hint">글을 쓰지 않아도 물품을 선택해 제안할 수 있어요. 단, 미션이 ‘친절한 교환가’라면 공손한 표현을 넣어야 미션을 달성할 수 있어요.</p>
+    return `<section class="card"><h3>🤝 무역 제안 보내기</h3><p class="hint">글을 쓰지 않아도 물품을 선택해 제안할 수 있어요. 원하는 조건을 선택하고 보내세요.</p>
       <label class="f">① 어느 모둠에게 보낼까요?</label>
       <div class="pick" id="pickTo">${others.map((g) => `
         <button type="button" class="pickbtn ${Number(S.drafts.to) === g.id ? 'on' : ''}" data-act="pick-to" data-g="${g.id}" style="--c:${gcol(g.id)}">
@@ -612,7 +605,7 @@ function renderStudent() {
       <label class="f" for="wi">③ 우리가 받고 싶은 물품</label>
       <div class="two"><select id="wi" data-draft="wi">${opts(S.drafts.wi)}</select><select id="wq" data-draft="wq">${qty(S.drafts.wq)}</select></div>
       <label class="f" for="msg">④ 무역 제안문 (선택)</label>
-      <div class="example"><b>선택 사항</b> 메시지를 비워 두어도 제안을 보낼 수 있어요. 친절한 교환가 미션에서는 “안녕하세요”, “교환해 주실 수 있을까요?”, “부탁드립니다” 같은 공손한 표현을 넣어 주세요.</div>
+      <div class="example"><b>선택 사항</b> 메시지는 선택 사항이에요. 거래 조건만으로도 제안할 수 있어요.</div>
       <textarea id="msg" data-draft="msg" rows="4" maxlength="${S.cfg.limits.maxText}" placeholder="선택 사항: 공손하게 제안 내용을 써 보세요."></textarea>
       <div class="cnt" id="msgCount"></div>
       <p style="margin-top:10px"><button class="btn big" data-act="send">💌 제안 보내기</button></p></section>`;
@@ -627,38 +620,34 @@ function renderStudent() {
       <span class="item">${itemQty(f.giveItem, f.giveQty)}</span> ⇄ <span class="item">${itemQty(f.wantItem, f.wantQty)}</span></div>`).join('')
       : '<p class="muted">아직 성사된 무역이 없어요.</p>'}</div></section>`);
 
-  /* --- 미션 탭 --- */
-  mount('missionCard', { m: me.mission }, () => {
-    const m = me.mission;
-    if (!m) return `<section class="card mission"><div class="me">🎯</div><h3>미션 카드</h3><p>게임이 시작되면 쉬운 첫 미션부터 시작해요. 달성할 때마다 다음 미션이 자동으로 나와요.</p></section>`;
-    return `<section class="card mission">${m.done ? '<span class="done">달성!</span>' : ''}
-      <div class="me">${m.emoji}</div><h3>${esc(m.title)}</h3><p style="font-size:1.1rem">${esc(m.desc)}</p>
-      <p><span class="bonus">보너스 +${m.bonus}점</span></p>
-      <div class="bar" style="margin:12px auto;max-width:320px"><i style="width:${Math.round((m.progress / m.target) * 100)}%;background:${m.done ? '#2fbf71' : 'var(--sea)'}"></i></div>
-      <p><b>${m.progress} / ${m.target}</b></p>
-      <p class="small">미션을 달성하면 보너스가 누적되고 다음 미션이 자동으로 나와요. 미션 보상은 회차마다 10점씩 높아져요.</p></section>`;
-  });
-  mount('myCrafts', { c: me.crafts }, () => {
-    const list = Object.entries(me.crafts);
-    return `<section class="card"><h3>🧰 우리가 만든 물품</h3>${list.length ? `<div class="row">${list.map(([k, n]) => `<span class="chip">${raw(k).emoji} ${esc(raw(k).name)} ×${n}</span>`).join('')}</div>` : '<p class="muted">아직 만든 물품이 없어요.</p>'}</section>`;
-  });
-
   /* --- 순위 탭 --- */
   mount('board', { b: st.board.map((x) => [x.id, x.total]), me: me.id }, () => {
     const max = Math.max(150, ...st.board.map((b) => b.total));
     return `<section class="card"><h3>🏆 모둠 순위</h3><ol class="rank">${st.board.map((b, i) => `
       <li class="${b.id === me.id ? 'me' : ''}"><span class="no">${i + 1}</span>
       <span>${flagEl(b.id)} ${raw(b.material).emoji}</span>
-      <div class="bar"><i style="width:${Math.round((b.total / max) * 100)}%"></i></div><b>${b.total}점</b></li>`).join('')}</ol></section>`;
+      <div class="bar"><i style="width:${Math.round((b.total / max) * 100)}%"></i></div><b>$${b.total}</b></li>`).join('')}</ol></section>`;
   });
   mount('final', { phase, r: st.results ? st.results.map((x) => [x.id, x.total]) : null, cmp: st.compare }, () => {
     if (phase !== 'finished' || !st.results) return '';
     const mine = st.results.find((r) => r.id === me.id);
     return `<section class="card final"><div class="big">🏁 우리 모둠 ${mine.rank}위!</div>
-      <p>물품 ${mine.craftScore}점 + 미션 ${mine.bonus}점 = <b>${mine.total}점</b></p></section>
+      <p>제작 금액 합계: <b>$${mine.total}</b></p></section>
       ${compareHTML(st.compare)}
-      <section class="card"><h3>🎯 모둠별 미션 공개</h3>${st.results.map((r) => `<p>${flagEl(r.id)} ${r.mission ? `${r.mission.emoji} ${esc(r.mission.title)} — ${esc(r.mission.desc)} ${r.mission.done ? '✅' : '❌'}` : '-'}</p>`).join('')}</section>`;
+`;
   });
+
+  // 받은 제안이 있으면 먼저 수락/거절하도록 화면 전체에 결정 창을 띄운다.
+  const oldDecision = document.getElementById('tradeDecisionOverlay');
+  if (oldDecision) oldDecision.remove();
+  const pendingTrade = phase === 'trade' && !st.game.paused ? st.incoming.find((t) => t.status === 'pending') : null;
+  if (pendingTrade) {
+    const overlay = document.createElement('div');
+    overlay.id = 'tradeDecisionOverlay';
+    overlay.className = 'decision-overlay';
+    overlay.innerHTML = `<section class="decision-card"><div style="font-size:2.4rem">📬</div><h2>무역 제안이 도착했어요!</h2><p><b>${pendingTrade.from}모둠</b>의 제안에 응답해 주세요.</p>${dealHTML(pendingTrade)}<p class="small">다른 활동을 계속하기 전에 수락 또는 거절을 선택해 주세요.</p><div class="row" style="justify-content:center"><button class="btn go big" data-act="accept" data-id="${pendingTrade.id}">✅ 수락하기</button><button class="btn no big" data-act="reject" data-id="${pendingTrade.id}">❌ 거절하기</button></div></section>`;
+    document.body.appendChild(overlay);
+  }
 }
 
 function updateCount() {
@@ -705,7 +694,7 @@ function renderTeacher() {
   mount('tHdr', { phase, p: st.game.production }, () => {
     const ctrl = {
       lobby: `<div class="settings">
-        <div class="hint" style="padding:8px 0;min-width:190px"><b>🎁 시작 자원 지급</b><br>10개 모둠 고정 · 특산품 10개 + 무작위 보조 자원 3개·2개</div>
+        <div class="hint" style="padding:8px 0;min-width:190px"><b>🎁 시작 자원 지급</b><br>10개 모둠 고정 · 특산품 12개 + 보조 자원 3개·2개 + 시작 자금 $100</div>
         <label>자급자족(분)<input id="setAut" type="number" min="0" max="30" step="0.5" data-draft="aut" value="2"></label>
         <label>무역(분)<input id="setTrd" type="number" min="1" max="60" step="0.5" data-draft="trd" value="12"></label>
         <button class="btn go big" data-act="t-start">▶ 게임 시작</button></div>`,
@@ -725,21 +714,20 @@ function renderTeacher() {
   mount('tResourceTable', st.groups.map(g => [g.id, g.inventory]), () => `<h3>현재 모둠별 자원 현황</h3><div class="scroll"><table><thead><tr><th>모둠</th>${Object.entries(S.cfg.raw).map(([k,v])=>`<th>${v.emoji} ${esc(v.name)}</th>`).join('')}</tr></thead><tbody>${st.groups.map(g=>`<tr><td>${g.id}모둠</td>${Object.keys(S.cfg.raw).map(k=>`<td>${g.inventory[k] || 0}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`);
 
   const ranked = [...st.groups].sort((a, b) => b.total - a.total || a.id - b.id);
-  mount('tTable', st.groups.map((g) => [g.id, g.online, g.inventory, g.crafts, g.tradeCount, g.mission && [g.mission.progress, g.mission.done], g.total]), () => `
-    <table><thead><tr><th>순위</th><th>모둠</th><th>창고</th><th>만든 물품</th><th>거래</th><th>미션</th><th style="text-align:right">점수</th></tr></thead><tbody>
+  mount('tTable', st.groups.map((g) => [g.id, g.online, g.inventory, g.crafts, g.tradeCount, g.total]), () => `
+    <table><thead><tr><th>순위</th><th>모둠</th><th>창고</th><th>만든 물품</th><th>거래</th><th style="text-align:right">총 제작 금액($)</th></tr></thead><tbody>
     ${st.groups.map((g) => `<tr><td class="rk">${ranked.findIndex((x) => x.id === g.id) + 1}</td>
       <td>${flagEl(g.id)} ${raw(g.material).emoji}</td>
       <td>${Object.entries(g.inventory).filter(([, n]) => n > 0).map(([k, n]) => `<span class="chip">${raw(k).emoji}${n}</span>`).join(' ') || '<span class="muted">-</span>'}</td>
       <td>${Object.entries(g.crafts).map(([k, n]) => `<span class="chip">${raw(k).emoji}×${n}</span>`).join(' ') || '<span class="muted">-</span>'}</td>
       <td>${g.tradeCount}회</td>
-      <td>${g.mission ? `${g.mission.emoji} ${esc(g.mission.title)} ${g.mission.progress}/${g.mission.target} ${g.mission.done ? '✅' : ''}` : '-'}</td>
-      <td class="pts">${g.total}</td></tr>`).join('')}</tbody></table>`);
+      <td class="pts">$${g.total}</td></tr>`).join('')}</tbody></table>`);
 
   mount('tFinal', { phase, c: st.compare }, () => {
     if (phase !== 'finished') return '';
     return `${compareHTML(st.compare)}
       <section class="card"><h3>💬 함께 이야기해 봐요</h3>
-        <ol><li>자급자족 시간에는 왜 아무도 점수를 내지 못했을까요?</li>
+        <ol><li>자급자족 시간에는 왜 물품을 만들기 어려웠을까요?</li>
         <li>무역을 하자 모든 모둠에게 이득이 생긴 이유는 무엇일까요?</li>
         <li>목재와 석유처럼 서로 다른 특산품을 가진 모둠은 왜 무역에서 유리했을까요? (희소성)</li>
         <li>가장 설득력 있었던 무역 제안문은 무엇이었나요? 오른쪽 편지함에서 함께 읽어 봐요.</li></ol></section>`;
@@ -778,21 +766,21 @@ const ACTIONS = {
   'market-group': (b) => { S.drafts.marketGroup = Number(b.dataset.g); S.sigs.trMarket = null; renderStudent(); },
   'shop-exchange': () => guarded(async () => {
     const giveItem1 = $('#shopGive1')?.value || S.drafts.shopGive1;
-    const giveItem2 = $('#shopGive2')?.value || S.drafts.shopGive2;
-    const giveQty1 = Number($('#shopQty1')?.value ?? S.drafts.shopQty1);
-    const giveQty2 = Number($('#shopQty2')?.value ?? S.drafts.shopQty2);
+    const giveItem2 = giveItem1;
+    const giveQty1 = 2;
+    const giveQty2 = 0;
     const wantItem = $('#shopWant')?.value || S.drafts.shopWant;
-    if (!giveItem1 || !giveItem2 || !wantItem || giveItem1 === giveItem2 || wantItem === giveItem1 || wantItem === giveItem2) throw new Error('내놓을 재화 두 종류와 다른 종류의 받을 재화를 선택해 주세요.');
-    if (!Number.isInteger(giveQty1) || !Number.isInteger(giveQty2) || giveQty1 < 0 || giveQty2 < 0 || giveQty1 + giveQty2 !== 2) throw new Error('내놓을 재화의 개수 합계는 반드시 2개여야 해요.');
+    if (!giveItem1 || !wantItem || wantItem === giveItem1) throw new Error('내놓을 재화와 다른 종류의 받을 재화를 선택해 주세요.');
+    
     await api('shop_exchange', { method: 'POST', body: { giveItem1, giveQty1, giveItem2, giveQty2, wantItem } });
-    Object.assign(S.drafts, { shopGive1: giveItem1, shopGive2: giveItem2, shopQty1: String(giveQty1), shopQty2: String(giveQty2), shopWant: wantItem });
-    toast(`🏪 ${raw(giveItem1).name} ${giveQty1}개와 ${raw(giveItem2).name} ${giveQty2}개를 내고 ${raw(wantItem).name} 1개를 받았어요. (이번 게임 ${Math.min(5, (S.st?.me?.shopExchangeCount || 0) + 1)}/5회)`, 'ok');
+    Object.assign(S.drafts, { shopGive1: giveItem1, shopGive2: giveItem1, shopQty1: '2', shopQty2: '0', shopWant: wantItem });
+    toast(`🏪 ${raw(giveItem1).name} 2개를 내고 ${raw(wantItem).name} 1개를 받았어요. (이번 게임 ${Math.min(5, (S.st?.me?.shopExchangeCount || 0) + 1)}/5회)`, 'ok');
     S.sigs.trShop = null; await poll();
   }),
   craft: (b) => guarded(async () => {
     const p = S.cfg.products[b.dataset.p];
     const r = await api('craft', { method: 'POST', body: { product: b.dataset.p } });
-    toast(`🎉 ${p.name} 완성! +${r.points}점`, 'ok');
+    toast(`🎉 ${p.name} 완성! +$${r.points}`, 'ok');
     await poll();
   }),
   send: () => guarded(async () => {
@@ -826,7 +814,7 @@ const ACTIONS = {
   't-start': () => guarded(async () => {
     const num = (k, d) => { const v = Number(S.drafts[k]); return Number.isFinite(v) && S.drafts[k] !== '' && S.drafts[k] !== undefined ? v : d; };
     await tpost('start', { production: 20, groupCount: 10, autarkySeconds: Math.round(num('aut', 2) * 60), tradeSeconds: Math.round(num('trd', 12) * 60) });
-    toast('게임을 시작했어요! 특산품 10개와 무작위 보조 자원 3개·2개를 지급했어요.', 'ok'); await poll();
+    toast('게임 시작! 특산품 12개, 보조 자원 3개·2개, 시작 자금 $100을 지급했어요.', 'ok'); await poll();
   }),
   'teacher-tab': (b) => { S.teacherTab = b.dataset.tab; S.sigs = {}; renderTeacher(); },
     't-grant': () => guarded(async () => { const groupId = Number($('#grantGroup')?.value); const item = $('#grantItem')?.value; const qty = Number($('#grantQty')?.value); await tpost('grant_resource', { groupId, item, qty }); toast(`자원을 지급했어요.`, 'ok'); await poll(); }),
@@ -850,7 +838,7 @@ const ACTIONS = {
     await tpost('finish'); await poll();
   }),
   't-reset': () => guarded(async () => {
-    if (!confirm('놀이를 전체 초기화할까요?\n\n모든 모둠의 자원, 제작 기록, 무역 제안, 점수와 미션이 초기화되고 입장 코드가 새로 만들어집니다. 이 작업은 되돌릴 수 없습니다.')) return;
+    if (!confirm('놀이를 전체 초기화할까요?\n\n모든 모둠의 자원, 제작 기록, 무역 제안과 점수가 초기화되고 입장 코드가 새로 만들어집니다. 이 작업은 되돌릴 수 없습니다.')) return;
     S.drafts = {}; await tpost('reset'); S.teacherReturn = null; toast('놀이를 초기 상태로 되돌렸어요.'); await poll();
   }),
 };
@@ -882,7 +870,7 @@ async function poll() {
 }
 function schedule() {
   clearTimeout(S.pollT);
-  S.pollT = setTimeout(async () => { if (!document.hidden) await poll(); schedule(); }, 3000);
+  S.pollT = setTimeout(async () => { if (!document.hidden) await poll(); schedule(); }, 5000);
 }
 function tick() {
   const g = S.st?.game;
