@@ -426,7 +426,7 @@ async function propose(client, g, b) {
 
 async function shopExchange(client, g, b) {
   const mode = String(b.mode || 'resource');
-  if (!['resource', 'usd'].includes(mode)) fail(400, '교환 방식을 골라 주세요.');
+  if (mode !== 'resource') fail(400, '국내 생산 상점에서는 달러로 재화를 살 수 없어요. 기본 재화끼리만 교환할 수 있어요.');
   const wantItem = String(b.wantItem || '');
   if (!RAW[wantItem] || wantItem === 'usd') fail(400, '받을 기본 재화를 골라 주세요. 가공품과 달러는 받을 수 없어요.');
 
@@ -438,21 +438,13 @@ async function shopExchange(client, g, b) {
     const used = groupRows.rows[0]?.shop_exchange_count ?? 0;
     if (used >= 5) fail(400, '이번 게임에서 상점 교환을 모두 사용했어요. 모둠별 교환은 게임당 5번까지 가능해요.');
 
-    if (mode === 'usd') {
-      const inv = await client.query('select item, qty from tg_inventory where group_id=$1 and item = any($2::text[]) for update', [g.id, ['usd', wantItem]]);
-      const quantities = Object.fromEntries(inv.rows.map((row) => [row.item, row.qty]));
-      if ((quantities.usd ?? 0) < 30) fail(400, `달러가 부족해요. 30달러가 필요하고 현재 ${quantities.usd ?? 0}달러 있어요.`);
-      await client.query('update tg_inventory set qty=qty-30 where group_id=$1 and item=$2', [g.id, 'usd']);
-      await client.query('update tg_inventory set qty=qty+1 where group_id=$1 and item=$2', [g.id, wantItem]);
-    } else {
-      const giveItem = String(b.giveItem1 || '');
-      if (!RAW[giveItem] || giveItem === 'usd' || giveItem === wantItem) fail(400, '서로 다른 기본 재화를 선택해 주세요. 달러 교환은 별도 메뉴에서 이용해요.');
-      const inv = await client.query('select item, qty from tg_inventory where group_id=$1 and item = any($2::text[]) for update', [g.id, [giveItem, wantItem]]);
-      const quantities = Object.fromEntries(inv.rows.map((row) => [row.item, row.qty]));
-      if ((quantities[giveItem] ?? 0) < 2) fail(400, `${RAW[giveItem].name}이(가) 부족해요. 현재 ${quantities[giveItem] ?? 0}개 있어요.`);
-      await client.query('update tg_inventory set qty=qty-2 where group_id=$1 and item=$2', [g.id, giveItem]);
-      await client.query('update tg_inventory set qty=qty+1 where group_id=$1 and item=$2', [g.id, wantItem]);
-    }
+    const giveItem = String(b.giveItem1 || '');
+    if (!RAW[giveItem] || giveItem === 'usd' || giveItem === wantItem) fail(400, '서로 다른 기본 재화를 선택해 주세요. 국내 생산 상점에서는 달러를 사용할 수 없어요.');
+    const inv = await client.query('select item, qty from tg_inventory where group_id=$1 and item = any($2::text[]) for update', [g.id, [giveItem, wantItem]]);
+    const quantities = Object.fromEntries(inv.rows.map((row) => [row.item, row.qty]));
+    if ((quantities[giveItem] ?? 0) < 2) fail(400, `${RAW[giveItem].name}이(가) 부족해요. 현재 ${quantities[giveItem] ?? 0}개 있어요.`);
+    await client.query('update tg_inventory set qty=qty-2 where group_id=$1 and item=$2', [g.id, giveItem]);
+    await client.query('update tg_inventory set qty=qty+1 where group_id=$1 and item=$2', [g.id, wantItem]);
     const updated = await client.query('update tg_groups set shop_exchange_count=shop_exchange_count+1 where id=$1 returning shop_exchange_count', [g.id]);
     return json({ ok: true, mode, wantItem, exchangesUsed: updated.rows[0].shop_exchange_count, exchangesRemaining: Math.max(0, 5 - updated.rows[0].shop_exchange_count) });
   });

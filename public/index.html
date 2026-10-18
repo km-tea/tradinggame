@@ -542,23 +542,21 @@ function renderStudent() {
   });
   mount('trShop', { phase, paused: st.game.paused, inv: me.inventory, mode: S.drafts.shopMode, give1: S.drafts.shopGive1, want: S.drafts.shopWant, exchanges: me.shopExchangeCount || 0 }, () => {
     const keys = Object.keys(S.cfg.raw).filter((k) => k !== 'usd');
-    if (!S.drafts.shopMode) S.drafts.shopMode = 'resource';
+    S.drafts.shopMode = 'resource';
     if (!S.drafts.shopGive1 || !keys.includes(S.drafts.shopGive1)) S.drafts.shopGive1 = me.material;
     if (!S.drafts.shopWant || !keys.includes(S.drafts.shopWant) || S.drafts.shopWant === S.drafts.shopGive1) S.drafts.shopWant = keys.find((k) => k !== S.drafts.shopGive1);
     const opts = (selected) => keys.map((k) => `<option value="${k}" ${k === selected ? 'selected' : ''}>${raw(k).emoji} ${esc(raw(k).name)} · ${me.inventory[k] ?? 0}개 보유</option>`).join('');
     const active = phase === 'trade' && !st.game.paused;
     const exchangesUsed = me.shopExchangeCount || 0;
     const exchangesRemaining = Math.max(0, 5 - exchangesUsed);
-    const usdMode = S.drafts.shopMode === 'usd';
-    const enough = usdMode ? (me.inventory.usd ?? 0) >= 30 : (me.inventory[S.drafts.shopGive1] ?? 0) >= 2;
-    return `<section class="card"><h3>🏪 국내 생산</h3><p class="hint">가공품은 교환할 수 없어요. 기본 재화 2개를 내고 다른 기본 재화 1개를 받거나, 달러 30달러로 기본 재화 1개를 살 수 있어요.</p><div class="banner"><b>이번 게임 상점 이용: ${exchangesUsed}/5회</b> · ${exchangesRemaining > 0 ? `${exchangesRemaining}회 남음` : '이용 횟수를 모두 사용했어요.'}</div>
-      <label class="f" for="shopMode">교환 방식</label><select id="shopMode" data-draft="shopMode" style="width:100%;padding:10px;border:2px solid var(--ink);border-radius:9px;background:white"><option value="resource" ${!usdMode ? 'selected' : ''}>재화 2개 ↔ 다른 재화 1개</option><option value="usd" ${usdMode ? 'selected' : ''}>달러 30달러 → 재화 1개</option></select>
-      ${!usdMode ? `<label style="display:block;font-weight:700;margin-top:10px">내놓을 기본 재화 2개<select id="shopGive1" data-draft="shopGive1" style="width:100%;margin-top:4px;padding:9px;border:2px solid var(--ink);border-radius:9px;background:white">${opts(S.drafts.shopGive1)}</select></label><p class="hint">내놓기: ${raw(S.drafts.shopGive1).emoji} ${esc(raw(S.drafts.shopGive1).name)} 2개</p>` : `<div class="banner" style="margin-top:10px">💵 보유 달러: <b>${me.inventory.usd ?? 0}달러</b> · 교환할 때마다 30달러를 사용해요.</div>`}
+    const enough = (me.inventory[S.drafts.shopGive1] ?? 0) >= 2;
+    return `<section class="card"><h3>🏪 국내 생산</h3><p class="hint">국내 생산 상점에서는 달러를 사용할 수 없어요. 기본 재화 2개를 내고 다른 기본 재화 1개를 받을 수 있어요. 가공품은 교환할 수 없어요.</p><div class="banner"><b>이번 게임 상점 이용: ${exchangesUsed}/5회</b> · ${exchangesRemaining > 0 ? `${exchangesRemaining}회 남음` : '이용 횟수를 모두 사용했어요.'}</div>
+      <label style="display:block;font-weight:700;margin-top:10px">내놓을 기본 재화 2개<select id="shopGive1" data-draft="shopGive1" style="width:100%;margin-top:4px;padding:9px;border:2px solid var(--ink);border-radius:9px;background:white">${opts(S.drafts.shopGive1)}</select></label><p class="hint">내놓기: ${raw(S.drafts.shopGive1).emoji} ${esc(raw(S.drafts.shopGive1).name)} 2개</p>
       <label style="display:block;font-weight:700;margin-top:10px">받을 기본 재화 1개<select id="shopWant" data-draft="shopWant" style="width:100%;margin-top:4px;padding:9px;border:2px solid var(--ink);border-radius:9px;background:white">${opts(S.drafts.shopWant)}</select></label>
-      <p class="hint">${usdMode ? `내놓기: 💵 달러 30달러 → 받기: ${raw(S.drafts.shopWant).emoji} ${esc(raw(S.drafts.shopWant).name)} 1개` : `내놓기: ${raw(S.drafts.shopGive1).emoji} ${esc(raw(S.drafts.shopGive1).name)} 2개 → 받기: ${raw(S.drafts.shopWant).emoji} ${esc(raw(S.drafts.shopWant).name)} 1개`}</p>
-      ${!enough ? `<p class="muted">${usdMode ? '달러가 30달러 이상 있어야 해요.' : '선택한 재화가 2개 이상 있어야 해요.'}</p>` : ''}
-      ${!active ? `<p class="muted">상점은 무역 시간에 게임이 진행 중일 때 이용할 수 있어요.</p>` : ''}
-      <button class="btn go" data-act="shop-exchange" ${active && enough && (!usdMode ? S.drafts.shopWant !== S.drafts.shopGive1 : true) && exchangesRemaining > 0 ? '' : 'disabled'}>${usdMode ? '💵 30달러로 재화 1개 교환' : '🔄 재화 2개를 내고 1개 받기'}</button></section>`;
+      <p class="hint">교환: ${raw(S.drafts.shopGive1).emoji} ${esc(raw(S.drafts.shopGive1).name)} 2개 → ${raw(S.drafts.shopWant).emoji} ${esc(raw(S.drafts.shopWant).name)} 1개</p>
+      ${!enough ? '<p class="muted">선택한 재화가 2개 이상 있어야 해요.</p>' : ''}
+      ${!active ? '<p class="muted">상점은 무역 시간에 게임이 진행 중일 때 이용할 수 있어요.</p>' : ''}
+      <button class="btn go" data-act="shop-exchange" ${active && enough && S.drafts.shopWant !== S.drafts.shopGive1 && exchangesRemaining > 0 ? '' : 'disabled'}>🔄 재화 2개를 내고 1개 받기</button></section>`;
   });
   mount('trInbox', { phase, paused: st.game.paused, inc: st.incoming.map((t) => [t.id, t.status, t.reply]), inv: me.inventory }, () => {
     const canReply = phase === 'trade' && !st.game.paused;
@@ -768,12 +766,12 @@ const ACTIONS = {
   },
   'market-group': (b) => { S.drafts.marketGroup = Number(b.dataset.g); S.sigs.trMarket = null; renderStudent(); },
   'shop-exchange': () => guarded(async () => {
-    const mode = S.drafts.shopMode || 'resource';
+    const mode = 'resource';
     const giveItem1 = $('#shopGive1')?.value || S.drafts.shopGive1;
     const wantItem = $('#shopWant')?.value || S.drafts.shopWant;
     if (!wantItem || (mode === 'resource' && (!giveItem1 || wantItem === giveItem1))) throw new Error('서로 다른 기본 재화를 선택해 주세요.');
     await api('shop_exchange', { method: 'POST', body: { mode, giveItem1, wantItem } });
-    toast(mode === 'usd' ? `🏪 달러 30달러를 내고 ${raw(wantItem).name} 1개를 받았어요.` : `🏪 ${raw(giveItem1).name} 2개를 내고 ${raw(wantItem).name} 1개를 받았어요.`, 'ok');
+    toast(`🏪 ${raw(giveItem1).name} 2개를 내고 ${raw(wantItem).name} 1개를 받았어요.`, 'ok');
     S.sigs.trShop = null; await poll();
   }),
   craft: (b) => guarded(async () => {
@@ -813,7 +811,7 @@ const ACTIONS = {
   't-start': () => guarded(async () => {
     const num = (k, d) => { const v = Number(S.drafts[k]); return Number.isFinite(v) && S.drafts[k] !== '' && S.drafts[k] !== undefined ? v : d; };
     await tpost('start', { production: 20, groupCount: 10, autarkySeconds: Math.round(num('aut', 2) * 60), tradeSeconds: Math.round(num('trd', 12) * 60) });
-    toast('게임 시작! 특산품 8개와 보조 자원 2개·1개를 지급했어요. 달러는 기본·심화 가공품 제작으로 얻을 수 있어요.', 'ok'); await poll();
+    toast('게임 시작! 특산품 8개와 보조 자원 2개·1개를 지급했어요. 달러는 기본·심화 가공품 제작으로 얻을 수 있고, 국내 생산 상점에서는 사용할 수 없어요.', 'ok'); await poll();
   }),
   'teacher-tab': (b) => { S.teacherTab = b.dataset.tab; S.sigs = {}; renderTeacher(); },
     't-grant': () => guarded(async () => { const groupId = Number($('#grantGroup')?.value); const item = $('#grantItem')?.value; const qty = Number($('#grantQty')?.value); await tpost('grant_resource', { groupId, item, qty }); toast(`자원을 지급했어요.`, 'ok'); await poll(); }),
