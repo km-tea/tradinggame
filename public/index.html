@@ -266,7 +266,7 @@ let LOGIN_GROUP_COUNT = 10;
 const S = {
   session: null, st: null, cfg: null, skew: 0, offline: false,
   tab: 'craft', drafts: {}, sigs: {}, shell: null, seen: null, busy: false,
-  loginRole: 'group', loginGroup: null, pollT: null, teacherTab: 'ops',
+  loginRole: 'group', loginGroup: null, loginRoomCode: '기본학급', pollT: null, teacherTab: 'ops',
 };
 try { S.session = JSON.parse(sessionStorage.getItem('tg_session') || 'null'); } catch { S.session = null; }
 const saveSession = () => {
@@ -279,6 +279,8 @@ async function api(path, { method = 'GET', body } = {}) {
   const s = S.session;
   if (s?.role === 'teacher') h['x-teacher-pin'] = encodeURIComponent(s.pin);
   if (s?.role === 'group') { h['x-group'] = String(s.group); h['x-code'] = String(s.code); }
+  const roomCode = s?.roomCode || S.loginRoomCode || '';
+  if (roomCode) h['x-room-code'] = encodeURIComponent(roomCode);
   const r = await fetch('/api/' + path, { method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
   let data = null;
   try { data = await r.json(); } catch {}
@@ -378,7 +380,7 @@ function renderLogin() {
     <div class="hero">
       <div class="bunting">${Array.from({length: LOGIN_GROUP_COUNT}, (_, i) => i + 1).map((i) => `<span class="flag" style="--c:${gcol(i)}">${i}</span>`).join('')}</div>
       <h1>무역 항구</h1>
-      <p>같은 특산품을 가진 두 모둠씩, 설정된 모둠이 함께해요.<br>입장 코드를 입력하고 거래와 제작으로 물품을 완성해 보세요.</p>
+      <p>학급마다 독립된 게임 공간에서 진행해요.<br>학급 코드와 모둠 입장 코드를 입력하고 무역과 제작을 시작하세요.</p>
     </div>
     <div class="card">
       <div class="seg" id="seg">
@@ -394,6 +396,9 @@ function renderLoginBody() {
   document.querySelectorAll('#seg button').forEach((b) => b.classList.toggle('on', b.dataset.r === S.loginRole));
   if (S.loginRole === 'group') {
     $('#loginBody').innerHTML = `
+      <label class="f" for="roomCode">학급 코드</label>
+      <input id="roomCode" maxlength="24" autocomplete="off" value="${esc(S.loginRoomCode || '기본학급')}" placeholder="예: 6-1">
+      <p class="hint">같은 학급의 교사와 학생은 반드시 같은 코드를 입력해요. 학급마다 게임과 모둠 창고가 따로 운영돼요.</p>
       <label class="f">우리 모둠을 골라요</label>
       <div class="gpick">${Array.from({length: LOGIN_GROUP_COUNT}, (_, i) => i + 1).map((i) => `
         <button type="button" data-act="pick-login" data-g="${i}" class="${S.loginGroup === i ? 'on' : ''}">${flagEl(i, true)}<span>${i}모둠</span></button>`).join('')}</div>
@@ -402,6 +407,9 @@ function renderLoginBody() {
       <p style="margin-top:14px"><button class="btn go big" data-act="login" style="width:100%">입장하기</button></p>`;
   } else {
     $('#loginBody').innerHTML = `
+      <label class="f" for="roomCode">학급 코드</label>
+      <input id="roomCode" maxlength="24" autocomplete="off" value="${esc(S.loginRoomCode || '기본학급')}" placeholder="예: 6-1">
+      <p class="hint">같은 학급의 교사와 학생은 반드시 같은 코드를 입력해요. 학급마다 게임과 모둠 창고가 따로 운영돼요.</p>
       <label class="f" for="loginPin">교사 비밀번호</label>
       <input id="loginPin" type="password" autocomplete="current-password" placeholder="비밀번호">
       <p class="hint">교사 입장 코드는 1234입니다.</p>
@@ -409,20 +417,23 @@ function renderLoginBody() {
   }
 }
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && (e.target.id === 'loginCode' || e.target.id === 'loginPin')) doLogin();
+  if (e.key === 'Enter' && (e.target.id === 'loginCode' || e.target.id === 'loginPin' || e.target.id === 'roomCode')) doLogin();
 });
 async function doLogin() {
+  const roomCode = ($('#roomCode')?.value || '').trim() || '기본학급';
+  if (Array.from(roomCode).length > 24 || !/^[\p{L}\p{N} _-]+$/u.test(roomCode)) return toast('학급 코드는 한글·영문·숫자·공백·하이픈·밑줄로 24자 이내로 입력해 주세요.', 'warn');
+  S.loginRoomCode = roomCode;
   if (S.loginRole === 'group') {
     const code = ($('#loginCode')?.value || '').trim();
     if (!S.loginGroup) return toast('모둠을 골라 주세요.', 'warn');
     if (!code) return toast('입장 코드를 써 주세요.', 'warn');
     await api('login', { method: 'POST', body: { group: S.loginGroup, code } });
-    S.session = { role: 'group', group: S.loginGroup, code };
+    S.session = { role: 'group', group: S.loginGroup, code, roomCode };
   } else {
     const pin = $('#loginPin')?.value || '';
     if (!pin) return toast('비밀번호를 써 주세요.', 'warn');
     await api('login', { method: 'POST', body: { pin } });
-    S.session = { role: 'teacher', pin };
+    S.session = { role: 'teacher', pin, roomCode };
   }
   saveSession();
   startApp();
@@ -484,7 +495,7 @@ function renderStudent() {
 
   mount('hdr', { id: me.id, total: me.total, phase, off: S.offline }, () => `
     ${flagEl(me.id, true)}
-    <div class="ttl">${esc(me.name)}<small>${raw(me.material).emoji} ${esc(raw(me.material).name)} 특산품</small></div>
+    <div class="ttl">${esc(me.name)}<small>학급: ${esc(S.session.roomCode || '기본학급')} · ${raw(me.material).emoji} ${esc(raw(me.material).name)} 특산품</small></div>
     <span class="sp"></span>
     ${S.offline ? '<span class="offline">연결 확인 중…</span>' : ''}
     <div style="text-align:center"><span class="pill">${PHASE[phase]}</span><div class="timer" data-timer>--:--</div></div>
@@ -703,7 +714,7 @@ function renderTeacher() {
       trade: `${st.game.paused ? '<button class="btn go big" data-act="t-resume">▶ 재개</button>' : '<button class="btn sea big" data-act="t-pause">⏸ 일시 정지</button>'}<button class="btn sm" data-act="t-extend">+1분</button><button class="btn big" data-act="t-finish">🏁 게임 끝내기</button>`,
       finished: `<button class="btn sea big" data-act="t-reset">🔄 새 게임 준비</button>`,
     }[phase];
-    return `<h2>🧭 교사 화면</h2><span class="ph">${PHASE[phase]}${st.game.paused ? ' · 일시 정지' : ''}</span><span class="timer" data-timer>--:--</span><span class="sp"></span>
+    return `<h2>🧭 교사 화면 <small style="font-size:.72em;opacity:.8">· 학급: ${esc(S.session.roomCode || '기본학급')}</small></h2><span class="ph">${PHASE[phase]}${st.game.paused ? ' · 일시 정지' : ''}</span><span class="timer" data-timer>--:--</span><span class="sp"></span>
       <div class="row">${ctrl}</div>`;
   }, () => { /* 입력값 기본값 복원은 mount가 처리 */ });
 
@@ -828,7 +839,7 @@ const ACTIONS = {
   'view-student': () => guarded(async () => {
     const gid = Number($('#previewGroup')?.value || 1); const g = S.st.groups.find(x => x.id === gid);
     if (!g) throw new Error('모둠 정보를 찾을 수 없어요.');
-    S.teacherReturn = { ...S.session }; S.session = { role: 'group', group: gid, code: g.code }; S.tab = 'craft'; S.seen = null; S.sigs = {}; await poll();
+    S.teacherReturn = { ...S.session }; S.session = { role: 'group', group: gid, code: g.code, roomCode: S.session.roomCode }; S.tab = 'craft'; S.seen = null; S.sigs = {}; await poll();
   }),
   'back-teacher': () => guarded(async () => { if (!S.teacherReturn) return; S.session = S.teacherReturn; S.teacherReturn = null; S.tab = 'craft'; S.seen = null; S.sigs = {}; await poll(); }),
   't-extend': () => guarded(async () => { await tpost('extend', { seconds: 60 }); toast('1분을 늘렸어요.'); await poll(); }),

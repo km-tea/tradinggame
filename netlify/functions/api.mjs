@@ -2,7 +2,7 @@
 // 환경변수: DATABASE_URL (Neon 연결 문자열), TEACHER_PIN (교사 비밀번호, 필수)
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
-import { randomInt } from 'node:crypto';
+import { randomInt, createHash } from 'node:crypto';
 
 neonConfig.webSocketConstructor = ws;
 export const config = { path: '/api/*' };
@@ -159,9 +159,9 @@ create table if not exists tg_trades (
 );
 `;
 
-let schemaReady = false;
-async function ensureSchema(client) {
-  if (schemaReady) return;
+const readySchemas = new Set();
+async function ensureSchema(client, schemaKey = 'public') {
+  if (readySchemas.has(schemaKey)) return;
   try {
     await client.query(SCHEMA_SQL);
   } catch (e) {
@@ -192,7 +192,7 @@ async function ensureSchema(client) {
     [MAX_GROUP_COUNT, ITEM_KEYS]
   );
   await client.query('update tg_game set group_count=10 where id=1');
-  schemaReady = true;
+  readySchemas.add(schemaKey);
 }
 
 /* ================= 인증 ================= */
@@ -674,6 +674,30 @@ async function teacherAction(client, action, b) {
   }
 }
 
+/* ================= 학급별 독립 게임 공간 ================= */
+function normalizeRoomCode(value) {
+  let decoded = String(value ?? '');
+  try { decoded = decodeURIComponent(decoded); } catch { /* 이미 디코딩된 문자열이면 그대로 사용 */ }
+  const room = decoded.trim().normalize('NFKC').toLowerCase();
+  if (!room) return 'public'; // 이전 버전에서 로그인한 사용자는 기존 게임 공간을 유지한다.
+  if (room === '기본학급' || room === 'default') return 'public';
+  if (Array.from(room).length > 24 || !/^[\p{L}\p{N} _-]+$/u.test(room)) {
+    fail(400, '학급 코드는 한글·영문·숫자·공백·하이픈·밑줄로 24자 이내로 입력해 주세요.');
+  }
+  return 'tg_room_' + createHash('sha256').update(room).digest('hex').slice(0, 24);
+}
+async function selectRoom(client, req) {
+  const key = normalizeRoomCode(req.headers.get('x-room-code'));
+  if (key !== 'public') {
+    // 스키마 이름은 서버에서 해시로 생성하므로 SQL 식별자 삽입 위험이 없다.
+    await client.query(`create schema if not exists "${key}"`);
+    await client.query(`set search_path to "${key}"`);
+  } else {
+    await client.query('set search_path to public');
+  }
+  return key;
+}
+
 /* ================= 로그인 & 라우팅 ================= */
 async function login(client, b) {
   if (b.pin !== undefined) {
@@ -740,7 +764,8 @@ export default async (req) => {
   let client;
   try {
     client = await pool.connect();
-    await ensureSchema(client);
+    const roomKey = await selectRoom(client, req);
+    await ensureSchema(client, roomKey);
     return await dispatch(client, req, route);
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status);
