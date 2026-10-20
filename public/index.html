@@ -568,7 +568,6 @@ function renderStudent() {
         <span class="stamp">${flagEl(t.from, true)}</span>
         <h4>${t.from}모둠의 무역 제안</h4>
         <p class="small">상태: <b>${STATUS[t.status] || t.status}</b></p>
-        ${pending ? `<p class="hint">연속 거절: ${me.rejectStreak || 0}/3회 · 3번 연속 거절하면 다음 제안은 수락해야 해요.</p>` : ''}
         ${dealHTML(t)}
         <p class="small">우리 모둠의 ${esc(raw(t.wantItem).name)}: ${have}개 ${have >= t.wantQty ? '(충분해요)' : '(모자라요)'}</p>
         <blockquote class="quote" style="--c:${gcol(t.from)}">${esc(t.message)}</blockquote>
@@ -577,7 +576,7 @@ function renderStudent() {
         <textarea id="re-${t.id}" data-draft="re-${t.id}" rows="2" maxlength="${S.cfg.limits.maxText}" placeholder="예) 좋아요! 우리도 면화가 필요했어요. 같이 물품을 만들어요."></textarea>
         <p class="hint">수락하거나 거절할 때 답장을 쓰지 않아도 돼요. 이유를 적으면 서로의 생각을 더 잘 알 수 있어요.</p>
         <div class="row"><button class="btn go" data-act="accept" data-id="${t.id}">✅ 수락하기</button>
-        <button class="btn no" data-act="reject" data-id="${t.id}" ${(me.rejectStreak || 0) >= 3 ? 'disabled title="3번 연속 거절했어요. 이번에는 수락해야 해요."' : ''}>❌ 거절하기</button></div>` : ''}</article>`;
+        <button class="btn no" data-act="reject" data-id="${t.id}">❌ 거절하기</button></div>` : ''}</article>`;
     }).join('') + '</div></section>';
   });
   mount('trForm', { phase, me: me.id, mode: S.drafts.tradeMode, gi: S.drafts.gi, wi: S.drafts.wi }, () => {
@@ -646,7 +645,7 @@ function renderStudent() {
     const overlay = document.createElement('div');
     overlay.id = 'tradeDecisionOverlay';
     overlay.className = 'decision-overlay';
-    overlay.innerHTML = `<section class="decision-card"><div style="font-size:2.4rem">📬</div><h2>무역 제안이 도착했어요!</h2><p><b>${pendingTrade.from}모둠</b>의 제안에 응답해 주세요.</p>${dealHTML(pendingTrade)}<p class="small">연속 거절: ${me.rejectStreak || 0}/3회. 3번 연속 거절했다면 이번 제안은 수락해야 해요.</p><div class="row" style="justify-content:center"><button class="btn go big" data-act="accept" data-id="${pendingTrade.id}">✅ 수락하기</button><button class="btn no big" data-act="reject" data-id="${pendingTrade.id}" ${(me.rejectStreak || 0) >= 3 ? 'disabled title="3번 연속 거절했어요. 이번에는 수락해야 해요."' : ''}>❌ 거절하기</button></div></section>`;
+    overlay.innerHTML = `<section class="decision-card"><div style="font-size:2.4rem">📬</div><h2>무역 제안이 도착했어요!</h2><p><b>${pendingTrade.from}모둠</b>의 제안에 응답해 주세요.</p>${dealHTML(pendingTrade)}<p class="small">자원이 부족하거나 제안 조건이 마음에 들지 않으면 거절할 수 있어요.</p><div class="row" style="justify-content:center"><button class="btn go big" data-act="accept" data-id="${pendingTrade.id}">✅ 수락하기</button><button class="btn no big" data-act="reject" data-id="${pendingTrade.id}">❌ 거절하기</button></div></section>`;
     document.body.appendChild(overlay);
   }
 }

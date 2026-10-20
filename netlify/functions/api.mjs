@@ -130,7 +130,6 @@ alter table tg_groups add column if not exists mission_start_lv3 int not null de
 alter table tg_groups add column if not exists mission_start_partners int not null default 0;
 alter table tg_groups add column if not exists mission_start_accepts int not null default 0;
 alter table tg_groups add column if not exists shop_exchange_count int not null default 0;
-alter table tg_groups add column if not exists reject_streak int not null default 0;
 create table if not exists tg_inventory (
   group_id int not null references tg_groups(id) on delete cascade,
   item text not null,
@@ -264,7 +263,7 @@ function computeStats(all) {
     out[g.id] = {
       id: g.id, name: g.name, material: g.material, inventory, crafts,
       craftScore, autarkyScore, tradeScore, bonus, total: craftScore + bonus,
-      tradeCount: mine.length, mission, missionCount: g.mission_count || 0, shopExchangeCount: g.shop_exchange_count || 0, rejectStreak: g.reject_streak || 0, levelCounts: lv, partnersCount: partners.size, acceptCount: accepts,
+      tradeCount: mine.length, mission, missionCount: g.mission_count || 0, shopExchangeCount: g.shop_exchange_count || 0, levelCounts: lv, partnersCount: partners.size, acceptCount: accepts,
     };
   }
   return out;
@@ -466,15 +465,12 @@ async function respond(client, g, b) {
     if (t.status !== 'pending') fail(409, '이미 처리된 제안이에요.');
 
     if (!accept) {
-      const groupLock = await client.query('select reject_streak from tg_groups where id=$1 for update', [g.id]);
-      const streak = groupLock.rows[0]?.reject_streak ?? 0;
-      if (streak >= 3) fail(400, '무역 제안을 3번 연속 거절했어요. 이번 제안은 수락해야 해요.');
+      // 거절 횟수 제한은 두지 않는다. 자원이 부족하거나 조건이 맞지 않으면 언제든 거절할 수 있다.
       await client.query(
         "update tg_trades set status='rejected', reply=$2, resolved_at=now() where id=$1",
         [id, reply || null]
       );
-      await client.query('update tg_groups set reject_streak=reject_streak+1 where id=$1', [g.id]);
-      return { status: 'rejected', rejectStreak: streak + 1 };
+      return { status: 'rejected' };
     }
 
     // 두 모둠의 창고를 항상 같은 순서로 잠가서 서로 막히는 일을 방지
@@ -505,7 +501,6 @@ async function respond(client, g, b) {
       "update tg_trades set status='accepted', reply=$2, resolved_at=now() where id=$1",
       [id, reply]
     );
-    await client.query('update tg_groups set reject_streak=0 where id=$1', [g.id]);
     return { status: 'accepted' };
   });
 
@@ -529,7 +524,7 @@ async function wipe(client) {
   await client.query('delete from tg_trades');
   await client.query('delete from tg_crafts');
   await client.query('update tg_inventory set qty=0');
-  await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0, reject_streak=0');
+  await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0');
 }
 // 게임 시작 시 특산품 8개와 무작위 보조 자원 2종(2개·1개)만 지급한다. 달러는 제작으로 얻는다.
 async function grantInitialResources(client) {
@@ -568,7 +563,7 @@ async function teacherAction(client, action, b) {
         await client.query('delete from tg_crafts where group_id > $1', [groupCount]);
         await client.query('update tg_inventory set qty=0 where group_id > $1', [groupCount]);
         for (let i = 0; i < groupCount; i++) {
-          await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0, reject_streak=0 where id=$1', [i + 1]);
+          await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0 where id=$1', [i + 1]);
         }
         await grantInitialResources(client);
         await client.query(
