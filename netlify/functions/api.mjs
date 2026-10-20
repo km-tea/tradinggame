@@ -262,7 +262,7 @@ function computeStats(all) {
 
     out[g.id] = {
       id: g.id, name: g.name, material: g.material, inventory, crafts,
-      craftScore, autarkyScore, tradeScore, bonus, total: craftScore + bonus,
+      craftScore, autarkyScore, tradeScore, bonus, total: craftScore + bonus, dollars: inventory.usd || 0, finalTotal: craftScore + bonus + (inventory.usd || 0),
       tradeCount: mine.length, mission, missionCount: g.mission_count || 0, shopExchangeCount: g.shop_exchange_count || 0, levelCounts: lv, partnersCount: partners.size, acceptCount: accepts,
     };
   }
@@ -294,7 +294,9 @@ async function state(client, req) {
 
   const all = await loadAll(client);
   const stats = computeStats(all);
-  const ranked = Object.values(stats).sort((a, b) => b.total - a.total || a.id - b.id);
+  // 진행 중 순위는 제작 포인트만으로 계산한다. 게임 종료 시에는 남은 달러를 더해 최종 순위를 계산한다.
+  const ranked = Object.values(stats).sort((a, b) => b.craftScore - a.craftScore || a.id - b.id);
+  const finalRanked = Object.values(stats).sort((a, b) => b.finalTotal - a.finalTotal || a.id - b.id);
   const sumOf = (f) => Object.values(stats).reduce((s, x) => s + x[f], 0);
   const compare = { autarky: sumOf('autarkyScore'), trade: sumOf('tradeScore'), bonus: sumOf('bonus') };
   const gm = all.game;
@@ -324,6 +326,7 @@ async function state(client, req) {
       })),
       trades,
       summary: { accepted: count('accepted'), pending: count('pending'), rejected: count('rejected') },
+      results: gm.phase === 'finished' ? finalRanked.map((s, i) => ({ rank: i + 1, id: s.id, name: s.name, material: s.material, craftScore: s.craftScore, dollars: s.dollars, total: s.finalTotal })) : null,
     });
   }
 
@@ -347,9 +350,9 @@ async function state(client, req) {
     })),
   };
   if (gm.phase === 'finished') {
-    out.results = ranked.map((s, i) => ({
+    out.results = finalRanked.map((s, i) => ({
       rank: i + 1, id: s.id, name: s.name, material: s.material,
-      craftScore: s.craftScore, bonus: s.bonus, total: s.total,
+      craftScore: s.craftScore, dollars: s.dollars, total: s.finalTotal,
     }));
   }
   return json(out);
@@ -378,9 +381,8 @@ async function craft(client, g, b) {
     await client.query('insert into tg_crafts (group_id, product, phase) values ($1,$2,$3)', [g.id, key, game.phase]);
     await client.query('update tg_inventory set qty=qty+1 where group_id=$1 and item=$2', [g.id, key]);
     const points = p.points ?? LEVELS[p.level].points;
-    // 기본·심화 가공품 제작 금액을 실제로 사용할 수 있는 달러 재고로 적립한다.
-    if (p.level <= 2) await client.query('update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2', [g.id, 'usd', points]);
-    return json({ ok: true, product: key, points, dollarsEarned: p.level <= 2 ? points : 0 });
+    // 물품 제작은 포인트만 적립한다. 달러는 시작 지급 및 무역으로만 보유·사용한다.
+    return json({ ok: true, product: key, points, dollarsEarned: 0 });
   });
 }
 
@@ -526,7 +528,7 @@ async function wipe(client) {
   await client.query('update tg_inventory set qty=0');
   await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0');
 }
-// 게임 시작 시 특산품 8개와 무작위 보조 자원 2종(2개·1개)만 지급한다. 달러는 제작으로 얻는다.
+// 게임 시작 시 특산품 8개, 무작위 보조 자원 2종(2개·1개), 달러 150을 지급한다. 제작 보상은 포인트다.
 async function grantInitialResources(client) {
   for (const groupId of (await client.query('select id from tg_groups where id <= (select group_count from tg_game where id=1) order by id')).rows.map(r => r.id)) {
     const group = (await client.query('select material from tg_groups where id=$1', [groupId])).rows[0];
@@ -534,6 +536,10 @@ async function grantInitialResources(client) {
     await client.query(
       'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2',
       [groupId, group.material, 8]
+    );
+    await client.query(
+      'update tg_inventory set qty=qty+150 where group_id=$1 and item=$2',
+      [groupId, 'usd']
     );
     const bonusItems = shuffle(RAW_KEYS.filter((item) => item !== group.material && item !== 'usd')).slice(0, 2);
     await client.query(

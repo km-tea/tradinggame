@@ -352,12 +352,12 @@ function compareHTML(c) {
   const max = Math.max(c.autarky, c.trade, 1);
   const w = (n) => Math.max(n > 0 ? 3 : 0, Math.round((n / max) * 100));
   const text = c.autarky === 0
-    ? `자급자족만 할 때는 물품을 만들기 어려웠어요. 무역을 열자 반 전체가 <b>$${c.trade}</b>의 물품을 만들었어요.`
-    : `자급자족 때 $${c.autarky}이던 제작 금액이 무역을 한 뒤 $${c.trade}이 됐어요.`;
+    ? `자급자족만 할 때는 물품을 만들기 어려웠어요. 무역을 열자 반 전체가 <b>${c.trade}점</b>을 얻었어요.`
+    : `자급자족 때 ${c.autarky}점이던 제작 점수가 무역을 한 뒤 ${c.trade}점이 됐어요.`;
   return `<section class="card"><h3>무역을 하기 전과 후</h3>
-    <div class="cmp"><span>🚫 자급자족</span><div class="bar ${c.autarky ? '' : 'zero'}"><i style="width:${w(c.autarky)}%"></i></div><b>$${c.autarky}</b></div>
-    <div class="cmp"><span>🤝 무역 시간</span><div class="bar trade ${c.trade ? '' : 'zero'}"><i style="width:${w(c.trade)}%"></i></div><b>$${c.trade}</b></div>
-    <p>${text}</p><p class="small">참여 모둠이 만든 물품의 금액을 모두 더한 값이에요.</p></section>`;
+    <div class="cmp"><span>🚫 자급자족</span><div class="bar ${c.autarky ? '' : 'zero'}"><i style="width:${w(c.autarky)}%"></i></div><b>${c.autarky}점</b></div>
+    <div class="cmp"><span>🤝 무역 시간</span><div class="bar trade ${c.trade ? '' : 'zero'}"><i style="width:${w(c.trade)}%"></i></div><b>${c.trade}점</b></div>
+    <p>${text}</p><p class="small">참여 모둠이 만든 물품의 포인트를 모두 더한 값이에요.</p></section>`;
 }
 
 function mailHTML(t, extra) {
@@ -488,7 +488,7 @@ function renderStudent() {
     <span class="sp"></span>
     ${S.offline ? '<span class="offline">연결 확인 중…</span>' : ''}
     <div style="text-align:center"><span class="pill">${PHASE[phase]}</span><div class="timer" data-timer>--:--</div></div>
-    <div class="score">$${me.total}</div>${S.teacherReturn ? '<button class="btn sea sm" data-act="back-teacher">교사 화면으로</button>' : ''}`);
+    <div class="score">${me.craftScore}점</div>${S.teacherReturn ? '<button class="btn sea sm" data-act="back-teacher">교사 화면으로</button>' : ''}`);
 
   mount('nav', { tab: S.tab, n: st.incoming.length }, () => [
     ['craft', '🎒', '만들기'], ['trade', '🤝', '무역'], ['board', '🏆', '순위'],
@@ -507,7 +507,7 @@ function renderStudent() {
     const canPlay = !st.game.paused && (phase === 'autarky' || phase === 'trade');
     return [1, 2, 3].map((lv) => {
       const list = Object.entries(S.cfg.products).filter(([, p]) => p.level === lv);
-      return `<div class="lvhead"><h3>난이도 ${lv} · ${esc(S.cfg.levels[lv].name)}</h3><span class="pts">${lv === 1 ? '$30~$50' : '$' + S.cfg.levels[lv].points}</span></div>
+      return `<div class="lvhead"><h3>난이도 ${lv} · ${esc(S.cfg.levels[lv].name)}</h3><span class="pts">${lv === 1 ? '30~50점' : S.cfg.levels[lv].points + '점'}</span></div>
       <div class="recipes">${list.map(([key, p]) => {
         const ings = Object.entries(p.recipe).map(([k, n]) => {
           const have = me.inventory[k] ?? 0;
@@ -515,7 +515,7 @@ function renderStudent() {
         }).join('');
         const can = canPlay && Object.entries(p.recipe).every(([k, n]) => (me.inventory[k] ?? 0) >= n);
         return `<div class="recipe lv${lv}"><div class="top"><span class="big">${p.emoji}</span>
-          <div><b>${esc(p.name)}</b><br><small>${pts(p)}$ · 지금까지 ${me.crafts[key] || 0}개 만듦</small></div></div>
+          <div><b>${esc(p.name)}</b><br><small>${pts(p)}점 · 지금까지 ${me.crafts[key] || 0}개 만듦</small></div></div>
           <div class="ings">${ings}</div>
           <button class="btn go" data-act="craft" data-p="${key}" ${can ? '' : 'disabled'}>${can ? '만들기' : '재료가 모자라요'}</button></div>`;
       }).join('')}</div>`;
@@ -600,7 +600,7 @@ function renderStudent() {
       if (S.drafts.wi !== 'usd' && !(Number(S.drafts.wq)>=1 && Number(S.drafts.wq)<=5)) S.drafts.wq='1';
     }
     const modeValid = dollarMode ? ((S.drafts.gi === 'usd') !== (S.drafts.wi === 'usd')) : (S.drafts.gi !== S.drafts.wi);
-    return `<section class="card"><h3>🤝 무역 제안 보내기</h3><p class="hint">재화끼리는 1대1 물물교환, 달러를 사용할 때는 달러와 기본 재화를 교환해요. 가공품은 무역할 수 없어요.</p>
+    return `<section class="card"><h3>🤝 무역 제안 보내기</h3><p class="hint">모둠마다 시작 달러 $150을 받아요. 달러 거래는 30달러 단위로 제안할 수 있어요. 재화끼리는 1대1 물물교환을 하고, 가공품은 무역할 수 없어요.</p>
       <label class="f" for="tradeMode">① 교환 방식</label><select id="tradeMode" data-draft="tradeMode" style="width:100%;padding:10px;border:2px solid var(--ink);border-radius:9px;background:white"><option value="barter" ${!dollarMode ? 'selected' : ''}>1대1 물물교환</option><option value="dollar" ${dollarMode ? 'selected' : ''}>달러를 사용한 교환</option></select>
       <label class="f">② 어느 모둠에게 보낼까요?</label><div class="pick" id="pickTo">${others.map((g) => `<button type="button" class="pickbtn ${Number(S.drafts.to) === g.id ? 'on' : ''}" data-act="pick-to" data-g="${g.id}" style="--c:${gcol(g.id)}">${flagEl(g.id)}<span>${g.id}모둠<small>${raw(g.material).emoji} ${esc(raw(g.material).name)}</small></span></button>`).join('')}</div>
       <label class="f" for="gi">③ 우리가 줄 물품</label><div class="two"><select id="gi" data-draft="gi">${opts(S.drafts.gi)}</select><select id="gq" data-draft="gq">${qty(S.drafts.gq, S.drafts.gi)}</select></div>
@@ -623,16 +623,17 @@ function renderStudent() {
   /* --- 순위 탭 --- */
   mount('board', { b: st.board.map((x) => [x.id, x.total]), me: me.id }, () => {
     const max = Math.max(150, ...st.board.map((b) => b.total));
-    return `<section class="card"><h3>🏆 모둠 순위</h3><ol class="rank">${st.board.map((b, i) => `
+    return `<section class="card"><h3>🏆 모둠 포인트 순위</h3><p class="hint">게임 진행 중에는 제작 포인트만으로 순위를 보여 줘요. 최종 순위는 게임 종료 후 달러를 더해 계산해요.</p><ol class="rank">${st.board.map((b, i) => `
       <li class="${b.id === me.id ? 'me' : ''}"><span class="no">${i + 1}</span>
       <span>${flagEl(b.id)} ${raw(b.material).emoji}</span>
-      <div class="bar"><i style="width:${Math.round((b.total / max) * 100)}%"></i></div><b>$${b.total}</b></li>`).join('')}</ol></section>`;
+      <div class="bar"><i style="width:${Math.round((b.total / max) * 100)}%"></i></div><b>${b.total}점</b></li>`).join('')}</ol></section>`;
   });
   mount('final', { phase, r: st.results ? st.results.map((x) => [x.id, x.total]) : null, cmp: st.compare }, () => {
     if (phase !== 'finished' || !st.results) return '';
     const mine = st.results.find((r) => r.id === me.id);
     return `<section class="card final"><div class="big">🏁 우리 모둠 ${mine.rank}위!</div>
-      <p>제작 금액 합계: <b>$${mine.total}</b></p></section>
+      <p>제작 포인트 ${mine.craftScore}점 + 남은 달러 $${mine.dollars} = 최종 점수 <b>${mine.total}점</b></p>
+      <h3>🏆 최종 순위</h3><div class="scroll"><table><thead><tr><th>순위</th><th>모둠</th><th>제작 포인트</th><th>남은 달러</th><th>최종 점수</th></tr></thead><tbody>${st.results.map((r) => `<tr><td class="rk">${r.rank}위</td><td>${flagEl(r.id)} ${esc(r.name)}</td><td>${r.craftScore}점</td><td>$${r.dollars}</td><td class="pts">${r.total}점</td></tr>`).join('')}</tbody></table></div></section>
       ${compareHTML(st.compare)}
 `;
   });
@@ -694,7 +695,7 @@ function renderTeacher() {
   mount('tHdr', { phase, p: st.game.production }, () => {
     const ctrl = {
       lobby: `<div class="settings">
-        <div class="hint" style="padding:8px 0;min-width:190px"><b>🎁 시작 자원 지급</b><br>10개 모둠 고정 · 특산품 8개 + 보조 자원 2개·1개 (시작 달러 없음)</div>
+        <div class="hint" style="padding:8px 0;min-width:190px"><b>🎁 시작 자원 지급</b><br>10개 모둠 고정 · 특산품 8개 + 보조 자원 2개·1개 + 달러 $150</div>
         <label>자급자족(분)<input id="setAut" type="number" min="0" max="30" step="0.5" data-draft="aut" value="2"></label>
         <label>무역(분)<input id="setTrd" type="number" min="1" max="60" step="0.5" data-draft="trd" value="12"></label>
         <button class="btn go big" data-act="t-start">▶ 게임 시작</button></div>`,
@@ -713,19 +714,21 @@ function renderTeacher() {
 
   mount('tResourceTable', st.groups.map(g => [g.id, g.inventory]), () => `<h3>현재 모둠별 자원 현황</h3><div class="scroll"><table><thead><tr><th>모둠</th>${Object.entries(S.cfg.raw).map(([k,v])=>`<th>${v.emoji} ${esc(v.name)}</th>`).join('')}</tr></thead><tbody>${st.groups.map(g=>`<tr><td>${g.id}모둠</td>${Object.keys(S.cfg.raw).map(k=>`<td>${g.inventory[k] || 0}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`);
 
-  const ranked = [...st.groups].sort((a, b) => b.total - a.total || a.id - b.id);
+  const ranked = [...st.groups].sort((a, b) => b.craftScore - a.craftScore || a.id - b.id);
   mount('tTable', st.groups.map((g) => [g.id, g.online, g.inventory, g.crafts, g.tradeCount, g.total]), () => `
-    <table><thead><tr><th>순위</th><th>모둠</th><th>창고</th><th>만든 물품</th><th>거래</th><th style="text-align:right">총 제작 금액($)</th></tr></thead><tbody>
+    <table><thead><tr><th>순위</th><th>모둠</th><th>창고</th><th>만든 물품</th><th>거래</th><th style="text-align:right">제작 포인트</th></tr></thead><tbody>
     ${st.groups.map((g) => `<tr><td class="rk">${ranked.findIndex((x) => x.id === g.id) + 1}</td>
       <td>${flagEl(g.id)} ${raw(g.material).emoji}</td>
       <td>${Object.entries(g.inventory).filter(([, n]) => n > 0).map(([k, n]) => `<span class="chip">${raw(k).emoji}${n}</span>`).join(' ') || '<span class="muted">-</span>'}</td>
       <td>${Object.entries(g.crafts).map(([k, n]) => `<span class="chip">${raw(k).emoji}×${n}</span>`).join(' ') || '<span class="muted">-</span>'}</td>
       <td>${g.tradeCount}회</td>
-      <td class="pts">$${g.total}</td></tr>`).join('')}</tbody></table>`);
+      <td class="pts">${g.craftScore}점</td></tr>`).join('')}</tbody></table>`);
 
-  mount('tFinal', { phase, c: st.compare }, () => {
+  mount('tFinal', { phase, c: st.compare, results: st.results ? st.results.map((r) => [r.id, r.total]) : null }, () => {
     if (phase !== 'finished') return '';
+    const finalResults = st.results || [];
     return `${compareHTML(st.compare)}
+      <section class="card"><h3>🏆 최종 순위 (제작 포인트 + 남은 달러)</h3><div class="scroll"><table><thead><tr><th>순위</th><th>모둠</th><th>제작 포인트</th><th>남은 달러</th><th>최종 점수</th></tr></thead><tbody>${finalResults.map((r) => `<tr><td class="rk">${r.rank}위</td><td>${flagEl(r.id)} ${esc(r.name)}</td><td>${r.craftScore}점</td><td>$${r.dollars}</td><td class="pts">${r.total}점</td></tr>`).join('')}</tbody></table></div></section>
       <section class="card"><h3>💬 함께 이야기해 봐요</h3>
         <ol><li>자급자족 시간에는 왜 물품을 만들기 어려웠을까요?</li>
         <li>무역을 하자 모든 모둠에게 이득이 생긴 이유는 무엇일까요?</li>
@@ -776,7 +779,7 @@ const ACTIONS = {
   craft: (b) => guarded(async () => {
     const p = S.cfg.products[b.dataset.p];
     const r = await api('craft', { method: 'POST', body: { product: b.dataset.p } });
-    toast(`🎉 ${p.name} 완성! ${r.dollarsEarned ? `달러 +$${r.dollarsEarned}` : `제작 점수 +$${r.points}`} `, 'ok');
+    toast(`🎉 ${p.name} 완성! 제작 포인트 +${r.points}점`, 'ok');
     await poll();
   }),
   send: () => guarded(async () => {
@@ -810,7 +813,7 @@ const ACTIONS = {
   't-start': () => guarded(async () => {
     const num = (k, d) => { const v = Number(S.drafts[k]); return Number.isFinite(v) && S.drafts[k] !== '' && S.drafts[k] !== undefined ? v : d; };
     await tpost('start', { production: 20, groupCount: 10, autarkySeconds: Math.round(num('aut', 2) * 60), tradeSeconds: Math.round(num('trd', 12) * 60) });
-    toast('게임 시작! 특산품 8개와 보조 자원 2개·1개를 지급했어요. 달러는 기본·심화 가공품 제작으로 얻을 수 있고, 국내 생산 상점에서는 사용할 수 없어요.', 'ok'); await poll();
+    toast('게임 시작! 특산품 8개, 보조 자원 2개·1개, 달러 $150을 지급했어요. 물품 제작으로 포인트를 얻어요.', 'ok'); await poll();
   }),
   'teacher-tab': (b) => { S.teacherTab = b.dataset.tab; S.sigs = {}; renderTeacher(); },
     't-grant': () => guarded(async () => { const groupId = Number($('#grantGroup')?.value); const item = $('#grantItem')?.value; const qty = Number($('#grantQty')?.value); await tpost('grant_resource', { groupId, item, qty }); toast(`자원을 지급했어요.`, 'ok'); await poll(); }),
