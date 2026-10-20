@@ -81,7 +81,7 @@ textarea{resize:vertical;min-height:84px}
 .score{background:var(--gold);color:var(--ink);border-radius:12px;padding:2px 14px;font-family:var(--display);font-size:1.4rem;border:3px solid #fff}
 .score small{color:var(--ink);font-family:var(--body);margin-left:2px}
 .offline{background:#ff6b6b;color:#fff;border-radius:8px;padding:0 8px;font-size:.8rem}
-.nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(4,1fr);background:#fff;border-top:3px solid var(--ink)}
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:#fff;border-top:3px solid var(--ink)}
 .nav button{position:relative;border:0;background:#fff;padding:8px 2px 10px;cursor:pointer;font-family:var(--display);font-size:1rem;display:grid;gap:0;justify-items:center}
 .nav button .e{font-size:1.5rem;line-height:1.2}
 .nav button.on{background:var(--gold)}
@@ -501,10 +501,11 @@ function renderStudent() {
     <div style="text-align:center"><span class="pill">${PHASE[phase]}</span><div class="timer" data-timer>--:--</div></div>
     <div class="score">${me.craftScore}점</div>${S.teacherReturn ? '<button class="btn sea sm" data-act="back-teacher">교사 화면으로</button>' : ''}`);
 
-  mount('nav', { tab: S.tab, n: st.incoming.length }, () => [
+  const pendingIncomingCount = st.incoming.filter((t) => t.status === 'pending').length;
+  mount('nav', { tab: S.tab, n: pendingIncomingCount }, () => [
     ['craft', '🎒', '만들기'], ['trade', '🤝', '무역'], ['board', '🏆', '순위'],
   ].map(([k, e, l]) => `<button data-act="tab" data-t="${k}" class="${S.tab === k ? 'on' : ''}"><span class="e">${e}</span>${l}
-    ${k === 'trade' && st.incoming.length ? `<span class="badge">${st.incoming.length}</span>` : ''}</button>`).join(''));
+    ${k === 'trade' && pendingIncomingCount ? `<span class="badge">${pendingIncomingCount}</span>` : ''}</button>`).join(''));
 
   /* --- 만들기 탭 --- */
   mount('craftBanner', phase, () => ({
@@ -649,13 +650,22 @@ function renderStudent() {
 `;
   });
 
-  // 받은 제안이 있으면 먼저 수락/거절하도록 화면 전체에 결정 창을 띄운다.
+  // 받은 제안을 한 건씩 순서대로 처리한다. 같은 제안이 남아 있는 동안에는
+  // 팝업을 지웠다 다시 만들지 않아, 주기적 새로고침과 응답 동작이 겹쳐도 버튼이 흔들리지 않는다.
   const oldDecision = document.getElementById('tradeDecisionOverlay');
-  if (oldDecision) oldDecision.remove();
-  const pendingTrade = phase === 'trade' && !st.game.paused ? st.incoming.find((t) => t.status === 'pending') : null;
-  if (pendingTrade) {
+  const pendingTrade = phase === 'trade' && !st.game.paused
+    ? st.incoming
+        .filter((t) => t.status === 'pending')
+        .sort((a, b) => new Date(a.at || 0).getTime() - new Date(b.at || 0).getTime() || Number(a.id) - Number(b.id))[0] || null
+    : null;
+
+  if (!pendingTrade) {
+    if (oldDecision) oldDecision.remove();
+  } else if (!oldDecision || oldDecision.dataset.tradeId !== String(pendingTrade.id)) {
+    if (oldDecision) oldDecision.remove();
     const overlay = document.createElement('div');
     overlay.id = 'tradeDecisionOverlay';
+    overlay.dataset.tradeId = String(pendingTrade.id);
     overlay.className = 'decision-overlay';
     overlay.innerHTML = `<section class="decision-card"><div style="font-size:2.4rem">📬</div><h2>무역 제안이 도착했어요!</h2><p><b>${pendingTrade.from}모둠</b>의 제안에 응답해 주세요.</p>${dealHTML(pendingTrade)}<p class="small">자원이 부족하거나 제안 조건이 마음에 들지 않으면 거절할 수 있어요.</p><div class="row" style="justify-content:center"><button class="btn go big" data-act="accept" data-id="${pendingTrade.id}">✅ 수락하기</button><button class="btn no big" data-act="reject" data-id="${pendingTrade.id}">❌ 거절하기</button></div></section>`;
     document.body.appendChild(overlay);
