@@ -315,6 +315,15 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('change', (e) => {
   const t = e.target;
+  if (t.id === 'roomCode' && S.shell === 'login') {
+    S.loginRoomCode = (t.value || '').trim() || '기본학급';
+    loadPublicConfig(S.loginRoomCode, true);
+  }
+  if (t.id === 'groupCount' && S.session?.role === 'teacher') {
+    const groupCount = Number(t.value);
+    S.drafts.groupCount = String(groupCount);
+    tpost('set_group_count', { groupCount }).then(() => poll()).catch((err) => toast(err.message || '모둠 수를 변경하지 못했어요.', 'warn'));
+  }
   if (t.dataset && t.dataset.draft) S.drafts[t.dataset.draft] = t.value;
   if (['tradeMode', 'gi', 'wi', 'shopMode', 'shopGive1', 'shopWant'].includes(t.id)) { S.sigs.trForm = null; S.sigs.trShop = null; renderStudent(); }
 });
@@ -390,7 +399,19 @@ function renderLogin() {
       <div id="loginBody"></div>
     </div></div>`;
   renderLoginBody();
-  fetch('/api/public-config', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => { if (d?.groupCount) { LOGIN_GROUP_COUNT = d.groupCount; renderLoginBody(); } }).catch(() => {});
+  loadPublicConfig(S.loginRoomCode, false);
+}
+async function loadPublicConfig(roomCode, redraw = true) {
+  try {
+    const code = (roomCode || '기본학급').trim() || '기본학급';
+    const r = await fetch('/api/public-config', { headers: { 'x-room-code': encodeURIComponent(code) }, cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d?.groupCount && d.groupCount !== LOGIN_GROUP_COUNT) {
+      LOGIN_GROUP_COUNT = d.groupCount;
+      if (redraw && S.shell === 'login') renderLoginBody();
+    }
+  } catch {}
 }
 function renderLoginBody() {
   document.querySelectorAll('#seg button').forEach((b) => b.classList.toggle('on', b.dataset.r === S.loginRole));
@@ -716,7 +737,8 @@ function renderTeacher() {
   mount('tHdr', { phase, p: st.game.production }, () => {
     const ctrl = {
       lobby: `<div class="settings">
-        <div class="hint" style="padding:8px 0;min-width:190px"><b>🎁 시작 자원 지급</b><br>10개 모둠 고정 · 특산품 8개 + 보조 자원 2개·1개 + 달러 $150</div>
+        <div class="hint" style="padding:8px 0;min-width:190px"><b>🎁 시작 자원 지급</b><br>특산품 8개 · 보조 재화 2개와 1개 무작위 · 달러 $150/모둠</div>
+        <label>모둠 수<select id="groupCount" data-draft="groupCount">${[5, 10].map(n => `<option value="${n}" ${Number(S.drafts.groupCount || st.game.groupCount || 10) === n ? 'selected' : ''}>${n}개 모둠</option>`).join('')}</select><small>5개(축소형) 또는 10개(기본형)</small></label>
         <label>자급자족(분)<input id="setAut" type="number" min="0" max="30" step="0.5" data-draft="aut" value="2"></label>
         <label>무역(분)<input id="setTrd" type="number" min="1" max="60" step="0.5" data-draft="trd" value="12"></label>
         <button class="btn go big" data-act="t-start">▶ 게임 시작</button></div>`,
@@ -833,8 +855,9 @@ const ACTIONS = {
 
   't-start': () => guarded(async () => {
     const num = (k, d) => { const v = Number(S.drafts[k]); return Number.isFinite(v) && S.drafts[k] !== '' && S.drafts[k] !== undefined ? v : d; };
-    await tpost('start', { production: 20, groupCount: 10, autarkySeconds: Math.round(num('aut', 2) * 60), tradeSeconds: Math.round(num('trd', 12) * 60) });
-    toast('게임 시작! 특산품 8개, 보조 자원 2개·1개, 달러 $150을 지급했어요. 물품 제작으로 포인트를 얻어요.', 'ok'); await poll();
+    const groupCount = Number(S.drafts.groupCount || $('#groupCount')?.value || S.st?.game?.groupCount || 10);
+    await tpost('start', { production: 20, groupCount, autarkySeconds: Math.round(num('aut', 2) * 60), tradeSeconds: Math.round(num('trd', 12) * 60) });
+    toast(`${groupCount}개 모둠으로 시작했어요! 모둠마다 특산 재화 8개와 보조 재화 2개·1개를 무작위로 받고, 달러 $150이 지급돼요.`, 'ok'); await poll();
   }),
   'teacher-tab': (b) => { S.teacherTab = b.dataset.tab; S.sigs = {}; renderTeacher(); },
     't-grant': () => guarded(async () => { const groupId = Number($('#grantGroup')?.value); const item = $('#grantItem')?.value; const qty = Number($('#grantQty')?.value); await tpost('grant_resource', { groupId, item, qty }); toast(`자원을 지급했어요.`, 'ok'); await poll(); }),

@@ -18,8 +18,14 @@ const RAW = {
 };
 const RAW_KEYS = Object.keys(RAW);
 const MAX_GROUP_COUNT = 10;
-// 10개 모둠은 특산품 5종을 두 모둠씩 공유한다: 1·2 목재, 3·4 철광석, 5·6 면화, 7·8 식량, 9·10 석유
+const MIN_GROUP_COUNT = 5;
+// 기본형 10개 모둠은 각 특산 재화를 두 모둠씩, 축소형 5개 모둠은 한 모둠씩 맡는다.
+const SPECIALTY_KEYS = ['wood', 'iron', 'cotton', 'food', 'oil'];
 const GROUP_MATERIAL = ['wood', 'wood', 'iron', 'iron', 'cotton', 'cotton', 'food', 'food', 'oil', 'oil'];
+const groupMaterialsForCount = (count) => count === 5 ? SPECIALTY_KEYS : GROUP_MATERIAL;
+// 시작 모둠 수는 기존 10개 또는 축소형 5개만 허용한다.
+// 모둠마다 특산 재화 8개와 다른 재화 2개·1개를 무작위로 지급한다.
+const allowedGroupCount = (value) => Number(value) === 5 ? 5 : 10;
 
 const LEVELS = {
   1: { name: '기본 가공품', points: 30 },
@@ -180,7 +186,7 @@ async function ensureSchema(client, schemaKey = 'public') {
   }
   await client.query(
     `insert into tg_groups (id, name, material, code) values ${groupValues.join(', ')}
-     on conflict (id) do update set name=excluded.name, material=excluded.material`,
+     on conflict (id) do update set name=excluded.name`,
     groupParams
   );
   await client.query(
@@ -191,7 +197,7 @@ async function ensureSchema(client, schemaKey = 'public') {
      on conflict do nothing`,
     [MAX_GROUP_COUNT, ITEM_KEYS]
   );
-  await client.query('update tg_game set group_count=10 where id=1');
+  await client.query('update tg_game set group_count=10 where id=1 and group_count not in (5, 10)');
   readySchemas.add(schemaKey);
 }
 
@@ -528,27 +534,30 @@ async function wipe(client) {
   await client.query('update tg_inventory set qty=0');
   await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0');
 }
-// 게임 시작 시 특산품 8개, 무작위 보조 자원 2종(2개·1개), 달러 150을 지급한다. 제작 보상은 포인트다.
+// 게임 시작 시 기존 방식으로 자원을 지급한다.
+// 각 모둠은 특산 재화 8개, 다른 핵심 재화 2개와 1개(서로 다른 재화)를 무작위로 받으며 달러 $150을 받는다.
+// 5개 모둠은 5종의 특산 재화를 하나씩, 10개 모둠은 각 특산 재화를 두 모둠씩 맡는다.
 async function grantInitialResources(client) {
-  for (const groupId of (await client.query('select id from tg_groups where id <= (select group_count from tg_game where id=1) order by id')).rows.map(r => r.id)) {
-    const group = (await client.query('select material from tg_groups where id=$1', [groupId])).rows[0];
-    if (!group) continue;
+  const groups = (await client.query(
+    'select id, material from tg_groups where id <= (select group_count from tg_game where id=1) order by id'
+  )).rows;
+  for (const group of groups) {
     await client.query(
       'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2',
-      [groupId, group.material, 8]
+      [group.id, group.material, 8]
     );
     await client.query(
       'update tg_inventory set qty=qty+150 where group_id=$1 and item=$2',
-      [groupId, 'usd']
+      [group.id, 'usd']
     );
-    const bonusItems = shuffle(RAW_KEYS.filter((item) => item !== group.material && item !== 'usd')).slice(0, 2);
+    const bonusItems = shuffle(SPECIALTY_KEYS.filter((item) => item !== group.material)).slice(0, 2);
     await client.query(
       'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2',
-      [groupId, bonusItems[0], 2]
+      [group.id, bonusItems[0], 2]
     );
     await client.query(
       'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2',
-      [groupId, bonusItems[1], 1]
+      [group.id, bonusItems[1], 1]
     );
   }
 }
@@ -563,13 +572,16 @@ async function teacherAction(client, action, b) {
         const currentGame = await getGame(client);
         if (currentGame.phase === 'finished') await wipe(client);
         else { await client.query('delete from tg_trades'); await client.query('delete from tg_crafts'); await client.query('update tg_groups set mission=null'); }
-        const groupCount = 10;
-        await client.query('update tg_game set group_count=10 where id=1');
+        const groupCount = allowedGroupCount(b.groupCount);
+        await client.query('update tg_game set group_count=$1 where id=1', [groupCount]);
+        // 새 게임마다 재고를 초기화해 이전 게임의 자원이 누적되지 않게 한다.
+        await client.query('update tg_inventory set qty=0');
         await client.query('delete from tg_trades where from_group > $1 or to_group > $1', [groupCount]);
         await client.query('delete from tg_crafts where group_id > $1', [groupCount]);
         await client.query('update tg_inventory set qty=0 where group_id > $1', [groupCount]);
+        const materials = groupMaterialsForCount(groupCount);
         for (let i = 0; i < groupCount; i++) {
-          await client.query('update tg_groups set mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0 where id=$1', [i + 1]);
+          await client.query('update tg_groups set material=$2, mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0 where id=$1', [i + 1, materials[i]]);
         }
         await grantInitialResources(client);
         await client.query(
@@ -637,15 +649,19 @@ async function teacherAction(client, action, b) {
       return json({ ok: true });
     }
     case 'set_group_count': {
-      const groupCount = 10;
+      const groupCount = allowedGroupCount(b.groupCount);
       return tx(client, async () => {
         const game = await getGame(client);
         if (game.phase !== 'lobby') fail(409, '모둠 개수는 게임 시작 전에만 바꿀 수 있어요.');
-        await client.query('update tg_game set group_count=10 where id=1');
+        await client.query('update tg_game set group_count=$1 where id=1', [groupCount]);
         await client.query('delete from tg_trades where from_group > $1 or to_group > $1', [groupCount]);
         await client.query('delete from tg_crafts where group_id > $1', [groupCount]);
         await client.query('update tg_inventory set qty=0 where group_id > $1', [groupCount]);
-        return json({ ok: true, groupCount: 10 });
+        const materials = groupMaterialsForCount(groupCount);
+        for (let i = 0; i < groupCount; i++) {
+          await client.query('update tg_groups set material=$2 where id=$1', [i + 1, materials[i]]);
+        }
+        return json({ ok: true, groupCount });
       });
     }
     case 'announce': {
@@ -666,6 +682,9 @@ async function teacherAction(client, action, b) {
           await client.query('update tg_groups set code=$2, last_seen=null where id=$1', [i, randomCode()]);
         }
         await client.query("update tg_game set phase='lobby', group_count=10, ends_at=null, paused=false, paused_remaining=0, announcement='', announcement_at=null where id=1");
+        for (let i = 0; i < MAX_GROUP_COUNT; i++) {
+          await client.query('update tg_groups set material=$2 where id=$1', [i + 1, GROUP_MATERIAL[i]]);
+        }
         return json({ ok: true });
       });
     }
@@ -766,6 +785,10 @@ export default async (req) => {
     client = await pool.connect();
     const roomKey = await selectRoom(client, req);
     await ensureSchema(client, roomKey);
+    if (route === 'public-config' && req.method === 'GET') {
+      const game = await getGame(client);
+      return json({ groupCount: game.group_count });
+    }
     return await dispatch(client, req, route);
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status);
