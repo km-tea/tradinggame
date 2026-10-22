@@ -262,6 +262,7 @@ const PHASE = {
 };
 const STATUS = { pending: '⏳ 기다리는 중', accepted: '✅ 무역 성공', rejected: '❌ 거절됨', cancelled: '🚫 취소됨' };
 let LOGIN_GROUP_COUNT = 10;
+let PUBLIC_CONFIG_REQUEST_ID = 0;
 
 const S = {
   session: null, st: null, cfg: null, skew: 0, offline: false,
@@ -399,19 +400,28 @@ function renderLogin() {
       <div id="loginBody"></div>
     </div></div>`;
   renderLoginBody();
-  loadPublicConfig(S.loginRoomCode, false);
+  // 첫 화면은 기본 10개 모둠으로 표시하고, 학급 설정을 불러오면 즉시 맞춰 갱신한다.
+  loadPublicConfig(S.loginRoomCode, true);
 }
 async function loadPublicConfig(roomCode, redraw = true) {
+  const requestId = ++PUBLIC_CONFIG_REQUEST_ID;
+  const code = (roomCode || '기본학급').trim() || '기본학급';
   try {
-    const code = (roomCode || '기본학급').trim() || '기본학급';
     const r = await fetch('/api/public-config', { headers: { 'x-room-code': encodeURIComponent(code) }, cache: 'no-store' });
-    if (!r.ok) return;
+    if (!r.ok || requestId !== PUBLIC_CONFIG_REQUEST_ID) return;
     const d = await r.json();
-    if (d?.groupCount && d.groupCount !== LOGIN_GROUP_COUNT) {
-      LOGIN_GROUP_COUNT = d.groupCount;
-      if (redraw && S.shell === 'login') renderLoginBody();
-    }
-  } catch {}
+    if (requestId !== PUBLIC_CONFIG_REQUEST_ID) return;
+    // 서버 설정이 없거나 잘못된 값이면 기본 화면인 10개 모둠을 유지한다.
+    const nextCount = Number(d?.groupCount) === 5 ? 5 : 10;
+    const changed = nextCount !== LOGIN_GROUP_COUNT;
+    LOGIN_GROUP_COUNT = nextCount;
+    // 이전 학급에서 골랐던 모둠이 새 학급 범위를 벗어나면 선택을 해제한다.
+    if (S.loginGroup != null && S.loginGroup > LOGIN_GROUP_COUNT) S.loginGroup = null;
+    // 최초 접속 시에도 설정값을 반영해 학생 모둠 선택 화면을 다시 그린다.
+    if ((redraw || changed) && S.shell === 'login') renderLoginBody();
+  } catch {
+    // 설정을 불러오지 못하면 기본값 10개 모둠 화면을 유지한다.
+  }
 }
 function renderLoginBody() {
   document.querySelectorAll('#seg button').forEach((b) => b.classList.toggle('on', b.dataset.r === S.loginRole));
