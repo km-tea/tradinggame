@@ -42,13 +42,23 @@ const PRODUCTS = {
   farmkit:   { name: '농업 도구 세트',        emoji: '🌱', level: 1, points: 30, recipe: { iron: 1, food: 1 } },
   synthetics:{ name: '합성 섬유',             emoji: '🧵', level: 1, points: 50, recipe: { oil: 1, cotton: 1 } },
   supplykit: { name: '생활 기반 꾸러미',       emoji: '🧰', level: 1, points: 50, recipe: { wood: 1, iron: 1, food: 1 } },
+  toolkit:   { name: '정비 도구 상자',         emoji: '🧰', level: 1, points: 40, recipe: { iron: 1, oil: 1 } },
+  foodpack:  { name: '비상 식량 꾸러미',       emoji: '🥫', level: 1, points: 40, recipe: { food: 1, cotton: 1 } },
+  hygiene:   { name: '위생·보건 꾸러미',        emoji: '🧼', level: 1, points: 40, recipe: { cotton: 1, oil: 1 } },
   // 심화 가공품: 기본 가공품 1개 + 원재료 1종, 각 $100
   smart:     { name: '스마트 기기',          emoji: '📱', level: 2, points: 100, recipe: { cart: 1, oil: 1 } },
   fashion:   { name: '고급 의류',            emoji: '🧥', level: 2, points: 100, recipe: { clothes: 1, cotton: 1 } },
   medkit:    { name: '응급 구호 키트',        emoji: '🩹', level: 2, points: 100, recipe: { farmkit: 1, oil: 1 } },
+  recycle:   { name: '재활용 설비',            emoji: '♻️', level: 2, points: 100, recipe: { paper: 1, oil: 1 } },
+  relief:    { name: '재난 대응 장비',          emoji: '🦺', level: 2, points: 100, recipe: { supplykit: 1, iron: 1 } },
+  solar:     { name: '친환경 발전 설비',        emoji: '☀️', level: 2, points: 100, recipe: { synthetics: 1, iron: 1 } },
+  agrobot:   { name: '스마트 농업 장치',        emoji: '🤖', level: 2, points: 100, recipe: { farmkit: 1, oil: 1 } },
   // 최종 완성품: 심화 가공품 2개 + 기본 재화 1종, 각 $200
   city:      { name: '첨단 도시 모형',        emoji: '🚀', level: 3, points: 200, recipe: { smart: 1, medkit: 1, wood: 1 } },
   civ:       { name: '지속 가능한 미래 세트',  emoji: '👑', level: 3, points: 200, recipe: { fashion: 1, medkit: 1, food: 1 } },
+  ecohub:    { name: '친환경 스마트 항구',      emoji: '🌱', level: 3, points: 200, recipe: { smart: 1, fashion: 1, oil: 1 } },
+  agcity:    { name: '미래형 농업 도시',        emoji: '🌾', level: 3, points: 200, recipe: { smart: 1, agrobot: 1, food: 1 } },
+  recovery:  { name: '재난 복구 종합 센터',    emoji: '🏥', level: 3, points: 200, recipe: { relief: 1, recycle: 1, wood: 1 } },
 };
 const ITEM_KEYS = [...RAW_KEYS, ...Object.keys(PRODUCTS)];
 const itemInfo = (k) => RAW[k] || PRODUCTS[k] || { name: k, emoji: '📦' };
@@ -79,6 +89,42 @@ function shuffle(a) {
   }
   return arr;
 }
+
+// 새 게임마다 기본 3종·심화 3종·최종 2종을 무작위 선택한다.
+// 심화/최종 조합은 이번 게임에서 선택된 앞 단계 가공품을 재료로 사용하도록 맞춘다.
+function chooseActiveProducts() {
+  const byLevel = (level) => Object.keys(PRODUCTS).filter((key) => PRODUCTS[key].level === level);
+  const basic = shuffle(byLevel(1)).slice(0, 3);
+  const advanced = shuffle(byLevel(2)).slice(0, 3);
+  const final = shuffle(byLevel(3)).slice(0, 2);
+  const recipes = {};
+  for (const key of advanced) {
+    const p = PRODUCTS[key];
+    const recipe = { ...p.recipe };
+    const baseKey = Object.keys(recipe).find((k) => PRODUCTS[k]?.level === 1);
+    if (baseKey && !basic.includes(baseKey)) {
+      const replacement = basic[randomInt(0, basic.length)];
+      const qty = recipe[baseKey]; delete recipe[baseKey]; recipe[replacement] = qty;
+    }
+    recipes[key] = recipe;
+  }
+  for (const key of final) {
+    const p = PRODUCTS[key];
+    const recipe = { ...p.recipe };
+    const advancedKeys = Object.keys(recipe).filter((k) => PRODUCTS[k]?.level === 2);
+    const available = shuffle(advanced);
+    for (let i = 0; i < advancedKeys.length; i++) {
+      const oldKey = advancedKeys[i];
+      if (!advanced.includes(oldKey)) {
+        const replacement = available[i % available.length];
+        const qty = recipe[oldKey]; delete recipe[oldKey]; recipe[replacement] = (recipe[replacement] || 0) + qty;
+      }
+    }
+    recipes[key] = recipe;
+  }
+  for (const key of basic) recipes[key] = { ...PRODUCTS[key].recipe };
+  return { keys: [...basic, ...advanced, ...final], recipes };
+}
 async function tx(client, fn) {
   await client.query('BEGIN');
   try {
@@ -104,13 +150,17 @@ create table if not exists tg_game (
   paused_remaining int not null default 0,
   announcement text not null default '',
   announcement_at timestamptz,
-  group_count int not null default 10
+  group_count int not null default 10,
+  active_products jsonb not null default '{}'::jsonb,
+  next_resource_at timestamptz
 );
 alter table tg_game add column if not exists paused boolean not null default false;
 alter table tg_game add column if not exists paused_remaining int not null default 0;
 alter table tg_game add column if not exists announcement text not null default '';
 alter table tg_game add column if not exists announcement_at timestamptz;
 alter table tg_game add column if not exists group_count int not null default 10;
+alter table tg_game add column if not exists active_products jsonb not null default '{}'::jsonb;
+alter table tg_game add column if not exists next_resource_at timestamptz;
 insert into tg_game (id) values (1) on conflict do nothing;
 create table if not exists tg_groups (
   id int primary key,
@@ -186,7 +236,7 @@ async function ensureSchema(client, schemaKey = 'public') {
   }
   await client.query(
     `insert into tg_groups (id, name, material, code) values ${groupValues.join(', ')}
-     on conflict (id) do update set name=excluded.name`,
+     on conflict (id) do nothing`,
     groupParams
   );
   await client.query(
@@ -224,7 +274,7 @@ async function authGroup(client, req) {
 /* ================= 데이터 읽기·점수 계산 ================= */
 async function getGame(client) {
   const { rows } = await client.query(
-    'select phase, ends_at, production, autarky_seconds, trade_seconds, paused, paused_remaining, announcement, announcement_at, group_count, now() as now from tg_game where id=1'
+    'select phase, ends_at, production, autarky_seconds, trade_seconds, paused, paused_remaining, announcement, announcement_at, group_count, active_products, next_resource_at, now() as now from tg_game where id=1'
   );
   return rows[0];
 }
@@ -281,11 +331,60 @@ const tradeOut = (t) => ({
   message: t.message, reply: t.reply, status: t.status, at: t.created_at,
 });
 
-function publicConfig(groups) {
+function publicConfig(groups, game) {
+  const active = game?.active_products?.keys;
+  const keys = Array.isArray(active) && active.length ? active : Object.keys(PRODUCTS);
+  const products = Object.fromEntries(keys.map((key) => [key, { ...PRODUCTS[key], recipe: game?.active_products?.recipes?.[key] || PRODUCTS[key].recipe }]));
   return {
-    raw: RAW, products: PRODUCTS, levels: LEVELS, limits: LIMITS,
+    raw: RAW, products, levels: LEVELS, limits: LIMITS,
     groups: groups.map((g) => ({ id: g.id, name: g.name, material: g.material })),
   };
+}
+
+// 진행 중에는 매 1분마다 각 모둠에 특산 재화 3개와 다른 기본 재화 1개를 지급한다.
+// DB 행 잠금으로 여러 학생이 동시에 상태를 조회해도 같은 분 보상이 중복 지급되지 않는다.
+async function grantTimedResourcesIfDue(client) {
+  // 대부분의 조회에서는 잠금 트랜잭션을 열지 않도록 먼저 가볍게 확인한다.
+  const peek = (await client.query(
+    'select phase, paused, next_resource_at, now() as now from tg_game where id=1'
+  )).rows[0];
+  if (!peek || !['autarky', 'trade'].includes(peek.phase) || peek.paused || !peek.next_resource_at) return;
+  if (new Date(peek.next_resource_at).getTime() > new Date(peek.now).getTime()) return;
+  return tx(client, async () => {
+    const { rows } = await client.query(
+      'select phase, paused, group_count, next_resource_at, now() as now from tg_game where id=1 for update'
+    );
+    const game = rows[0];
+    if (!game || !['autarky', 'trade'].includes(game.phase) || game.paused) return;
+    const nowMs = new Date(game.now).getTime();
+    const nextMs = game.next_resource_at ? new Date(game.next_resource_at).getTime() : nowMs + 60000;
+    if (!game.next_resource_at) {
+      await client.query("update tg_game set next_resource_at=now() + interval '1 minute' where id=1");
+      return;
+    }
+    if (nextMs > nowMs) return;
+    const ticks = Math.floor((nowMs - nextMs) / 60000) + 1;
+    const groups = (await client.query(
+      'select id, material from tg_groups where id <= $1 order by id', [game.group_count]
+    )).rows;
+    for (let tick = 0; tick < ticks; tick++) {
+      for (const group of groups) {
+        await client.query(
+          'update tg_inventory set qty=qty+3 where group_id=$1 and item=$2',
+          [group.id, group.material]
+        );
+        const randomItem = shuffle(SPECIALTY_KEYS.filter((item) => item !== group.material))[0];
+        await client.query(
+          'update tg_inventory set qty=qty+1 where group_id=$1 and item=$2',
+          [group.id, randomItem]
+        );
+      }
+    }
+    await client.query(
+      "update tg_game set next_resource_at=$1::timestamptz + ($2::int * interval '1 minute') where id=1",
+      [game.next_resource_at, ticks]
+    );
+  });
 }
 
 async function state(client, req) {
@@ -298,6 +397,7 @@ async function state(client, req) {
     await client.query('update tg_groups set last_seen=now() where id=$1', [g.id]);
   }
 
+  await grantTimedResourcesIfDue(client);
   const all = await loadAll(client);
   const stats = computeStats(all);
   // 진행 중 순위는 제작 포인트만으로 계산한다. 게임 종료 시에는 남은 달러를 더해 최종 순위를 계산한다.
@@ -314,7 +414,7 @@ async function state(client, req) {
       autarkySeconds: gm.autarky_seconds, tradeSeconds: gm.trade_seconds, groupCount: gm.group_count,
       paused: gm.paused, pausedRemaining: gm.paused_remaining, announcement: gm.announcement || '', announcementAt: gm.announcement_at,
     },
-    config: publicConfig(all.groups),
+    config: publicConfig(all.groups, gm),
     compare,
   };
 
@@ -367,9 +467,11 @@ async function state(client, req) {
 /* ================= 모둠 행동 ================= */
 async function craft(client, g, b) {
   const key = String(b.product);
-  const p = PRODUCTS[key];
-  if (!p) fail(400, '만들 물품을 골라 주세요.');
   const game = await getGame(client);
+  const activeKeys = game.active_products?.keys;
+  if (!PRODUCTS[key] || (Array.isArray(activeKeys) && activeKeys.length && !activeKeys.includes(key))) fail(400, '이번 게임에서 선택된 가공품이 아니에요.');
+  const p = { ...PRODUCTS[key], recipe: game.active_products?.recipes?.[key] || PRODUCTS[key].recipe };
+
   if (!['autarky', 'trade'].includes(game.phase) || game.paused) fail(403, game.paused ? '선생님이 게임을 잠시 멈췄어요.' : '지금은 물품을 만들 수 없어요.');
 
   return tx(client, async () => {
@@ -573,7 +675,8 @@ async function teacherAction(client, action, b) {
         if (currentGame.phase === 'finished') await wipe(client);
         else { await client.query('delete from tg_trades'); await client.query('delete from tg_crafts'); await client.query('update tg_groups set mission=null'); }
         const groupCount = allowedGroupCount(b.groupCount);
-        await client.query('update tg_game set group_count=$1 where id=1', [groupCount]);
+        const activeProducts = chooseActiveProducts();
+        await client.query('update tg_game set group_count=$1, active_products=$2::jsonb where id=1', [groupCount, JSON.stringify(activeProducts)]);
         // 새 게임마다 재고를 초기화해 이전 게임의 자원이 누적되지 않게 한다.
         await client.query('update tg_inventory set qty=0');
         await client.query('delete from tg_trades where from_group > $1 or to_group > $1', [groupCount]);
@@ -581,7 +684,7 @@ async function teacherAction(client, action, b) {
         await client.query('update tg_inventory set qty=0 where group_id > $1', [groupCount]);
         const materials = groupMaterialsForCount(groupCount);
         for (let i = 0; i < groupCount; i++) {
-          await client.query('update tg_groups set material=$2, mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0 where id=$1', [i + 1, materials[i]]);
+          await client.query('update tg_groups set name=$3, material=$2, mission=null, mission_count=0, mission_bonus=0, mission_start_lv1=0, mission_start_lv2=0, mission_start_lv3=0, mission_start_partners=0, mission_start_accepts=0, shop_exchange_count=0 where id=$1', [i + 1, materials[i], `${i + 1}모둠`]);
         }
         await grantInitialResources(client);
         await client.query(
@@ -633,7 +736,7 @@ async function teacherAction(client, action, b) {
         const game = rows[0];
         if (!['autarky', 'trade'].includes(game.phase)) fail(409, '게임 진행 중에만 재개할 수 있어요.');
         if (!game.paused) return json({ ok: true, paused: false });
-        await client.query("update tg_game set paused=false, ends_at=now() + (paused_remaining * interval '1 second'), paused_remaining=0 where id=1");
+        await client.query("update tg_game set paused=false, ends_at=now() + (paused_remaining * interval '1 second'), paused_remaining=0, next_resource_at=now() + interval '1 minute' where id=1");
         return json({ ok: true, paused: false });
       });
     }
@@ -672,7 +775,7 @@ async function teacherAction(client, action, b) {
     case 'finish': {
       const game = await getGame(client);
       if (!['autarky', 'trade'].includes(game.phase)) fail(409, '진행 중일 때만 끝낼 수 있어요.');
-      await client.query("update tg_game set phase='finished', ends_at=null, paused=false, paused_remaining=0 where id=1");
+      await client.query("update tg_game set phase='finished', ends_at=null, paused=false, paused_remaining=0, next_resource_at=null where id=1");
       return json({ ok: true });
     }
     case 'reset': {
@@ -683,7 +786,7 @@ async function teacherAction(client, action, b) {
         }
         await client.query("update tg_game set phase='lobby', group_count=10, ends_at=null, paused=false, paused_remaining=0, announcement='', announcement_at=null where id=1");
         for (let i = 0; i < MAX_GROUP_COUNT; i++) {
-          await client.query('update tg_groups set material=$2 where id=$1', [i + 1, GROUP_MATERIAL[i]]);
+          await client.query('update tg_groups set name=$3, material=$2 where id=$1', [i + 1, GROUP_MATERIAL[i], `${i + 1}모둠`]);
         }
         return json({ ok: true });
       });
@@ -750,6 +853,19 @@ async function dispatch(client, req, route) {
   }
   const g = await authGroup(client, req);
   switch (route) {
+    case 'set_name': {
+      const name = String(body.name ?? '').trim().normalize('NFKC');
+      if (!name) fail(400, '우리 나라 이름을 입력해 주세요.');
+      if (Array.from(name).length > 16 || !/^[\p{L}\p{N} _-]+$/u.test(name)) {
+        fail(400, '나라 이름은 한글·영문·숫자·공백·하이픈으로 16자 이내로 입력해 주세요.');
+      }
+      const game = await getGame(client);
+      if (game.phase !== 'autarky') fail(409, '나라 이름은 자급자족 시간에 정할 수 있어요.');
+      const duplicate = await client.query('select id from tg_groups where id <= (select group_count from tg_game where id=1) and id <> $1 and lower(name)=lower($2) limit 1', [g.id, name]);
+      if (duplicate.rows.length) fail(409, '이미 다른 모둠에서 사용 중인 나라 이름이에요. 다른 이름을 정해 주세요.');
+      await client.query('update tg_groups set name=$1 where id=$2', [name, g.id]);
+      return json({ ok: true, name });
+    }
     case 'craft':   return craft(client, g, body);
     case 'propose': return propose(client, g, body);
     case 'shop_exchange': return shopExchange(client, g, body);
