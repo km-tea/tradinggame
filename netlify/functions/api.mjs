@@ -7,6 +7,22 @@ import { randomInt, createHash } from 'node:crypto';
 neonConfig.webSocketConstructor = ws;
 export const config = { path: '/api/*' };
 
+// Netlify의 재사용 실행 환경에서는 연결 풀을 요청마다 만들고 닫지 않고 공유한다.
+// 이렇게 하면 잦은 접속에서 WebSocket/DB 연결을 반복 생성하는 부담을 줄인다.
+let sharedPool = null;
+function getSharedPool() {
+  if (!process.env.DATABASE_URL) return null;
+  if (!sharedPool) {
+    sharedPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 4,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 10000,
+    });
+  }
+  return sharedPool;
+}
+
 /* ================= 게임 데이터 ================= */
 const RAW = {
   wood:   { name: '목재',   emoji: '🪵' },
@@ -213,6 +229,12 @@ create table if not exists tg_trades (
   created_at timestamptz not null default now(),
   resolved_at timestamptz
 );
+create index if not exists tg_crafts_group_phase_idx on tg_crafts (group_id, phase);
+create index if not exists tg_crafts_group_product_phase_idx on tg_crafts (group_id, product, phase);
+create index if not exists tg_trades_from_group_idx on tg_trades (from_group, id);
+create index if not exists tg_trades_to_group_idx on tg_trades (to_group, id);
+create index if not exists tg_trades_status_idx on tg_trades (status);
+create index if not exists tg_inventory_group_idx on tg_inventory (group_id);
 `;
 
 const readySchemas = new Set();
@@ -341,21 +363,22 @@ function publicConfig(groups, game) {
   };
 }
 
-// 진행 중에는 매 1분마다 각 모둠에 특산 재화 3개와 다른 기본 재화 1개를 지급한다.
-// DB 행 잠금으로 여러 학생이 동시에 상태를 조회해도 같은 분 보상이 중복 지급되지 않는다.
+// 무역 시간이 시작된 뒤 매 1분마다 각 모둠에 특산 재화 3개와 다른 기본 재화 1개를 지급한다.
+// 자급자족 시간에는 지급하지 않으며, DB 행 잠금으로 같은 회차의 중복 지급을 방지한다.
 async function grantTimedResourcesIfDue(client) {
   // 대부분의 조회에서는 잠금 트랜잭션을 열지 않도록 먼저 가볍게 확인한다.
   const peek = (await client.query(
     'select phase, paused, next_resource_at, now() as now from tg_game where id=1'
   )).rows[0];
-  if (!peek || !['autarky', 'trade'].includes(peek.phase) || peek.paused || !peek.next_resource_at) return;
-  if (new Date(peek.next_resource_at).getTime() > new Date(peek.now).getTime()) return;
+  if (!peek || peek.phase !== 'trade' || peek.paused) return;
+  // 기존 진행 중 게임에 지급 시각이 누락되어 있어도 여기서 복구한다.
+  if (peek.next_resource_at && new Date(peek.next_resource_at).getTime() > new Date(peek.now).getTime()) return;
   return tx(client, async () => {
     const { rows } = await client.query(
       'select phase, paused, group_count, next_resource_at, now() as now from tg_game where id=1 for update'
     );
     const game = rows[0];
-    if (!game || !['autarky', 'trade'].includes(game.phase) || game.paused) return;
+    if (!game || game.phase !== 'trade' || game.paused) return;
     const nowMs = new Date(game.now).getTime();
     const nextMs = game.next_resource_at ? new Date(game.next_resource_at).getTime() : nowMs + 60000;
     if (!game.next_resource_at) {
@@ -363,27 +386,51 @@ async function grantTimedResourcesIfDue(client) {
       return;
     }
     if (nextMs > nowMs) return;
-    const ticks = Math.floor((nowMs - nextMs) / 60000) + 1;
+    const dueTicks = Math.floor((nowMs - nextMs) / 60000) + 1;
+    // 브라우저/서버가 오래 중단되었다가 복구되어도 한 요청에서 무한정 자원을 몰아주거나
+    // 수백 번의 DB 왕복이 발생하지 않도록 누적 지급은 최대 20분으로 제한한다.
+    const ticks = Math.min(dueTicks, 20);
     const groups = (await client.query(
       'select id, material from tg_groups where id <= $1 order by id', [game.group_count]
     )).rows;
-    for (let tick = 0; tick < ticks; tick++) {
-      for (const group of groups) {
-        await client.query(
-          'update tg_inventory set qty=qty+3 where group_id=$1 and item=$2',
-          [group.id, group.material]
-        );
-        const randomItem = shuffle(SPECIALTY_KEYS.filter((item) => item !== group.material))[0];
-        await client.query(
-          'update tg_inventory set qty=qty+1 where group_id=$1 and item=$2',
-          [group.id, randomItem]
-        );
+    // 특산 재화 지급은 한 번의 일괄 UPDATE로 처리한다.
+    await client.query(
+      `update tg_inventory i set qty=i.qty + ($1::int * 3)
+       from tg_groups g where i.group_id=g.id and g.id <= $2 and i.item=g.material`,
+      [ticks, game.group_count]
+    );
+    // 무작위 보조 재화도 모둠별 누적 수량을 계산한 뒤 한 번에 반영한다.
+    const bonus = new Map();
+    for (const group of groups) {
+      const choices = SPECIALTY_KEYS.filter((item) => item !== group.material);
+      for (let tick = 0; tick < ticks; tick++) {
+        const item = choices[randomInt(0, choices.length)];
+        const key = `${group.id}:${item}`;
+        bonus.set(key, (bonus.get(key) || 0) + 1);
       }
     }
-    await client.query(
-      "update tg_game set next_resource_at=$1::timestamptz + ($2::int * interval '1 minute') where id=1",
-      [game.next_resource_at, ticks]
-    );
+    if (bonus.size) {
+      const groupIds = [], items = [], amounts = [];
+      for (const [key, amount] of bonus) {
+        const [groupId, item] = key.split(':');
+        groupIds.push(Number(groupId)); items.push(item); amounts.push(amount);
+      }
+      await client.query(
+        `update tg_inventory i set qty=i.qty + v.amount
+         from unnest($1::int[], $2::text[], $3::int[]) as v(group_id, item, amount)
+         where i.group_id=v.group_id and i.item=v.item`,
+        [groupIds, items, amounts]
+      );
+    }
+    // 큰 지연 이후에는 과거 보상을 한꺼번에 쫓아가지 않고 다음 1분 주기부터 정상화한다.
+    if (dueTicks > ticks) {
+      await client.query("update tg_game set next_resource_at=now() + interval '1 minute' where id=1");
+    } else {
+      await client.query(
+        "update tg_game set next_resource_at=$1::timestamptz + ($2::int * interval '1 minute') where id=1",
+        [game.next_resource_at, ticks]
+      );
+    }
   });
 }
 
@@ -394,7 +441,7 @@ async function state(client, req) {
   if (pinHeader !== null) { requireTeacher(req); teacher = true; }
   else {
     g = await authGroup(client, req);
-    await client.query('update tg_groups set last_seen=now() where id=$1', [g.id]);
+    await client.query("update tg_groups set last_seen=now() where id=$1 and (last_seen is null or last_seen < now() - interval '30 seconds')", [g.id]);
   }
 
   await grantTimedResourcesIfDue(client);
@@ -672,13 +719,16 @@ async function teacherAction(client, action, b) {
       const trade = clampInt(b.tradeSeconds, 60, 3600, 720);
       return tx(client, async () => {
         const currentGame = await getGame(client);
+        // 대기실(lobby)에서 교사가 미리 지급한 재화는 새 게임의 시작 재화에 더해 보존한다.
+        // 종료된 게임에서 새 게임을 시작할 때는 이전 게임의 재화를 초기화한다.
+        const preservePrestartGrants = currentGame.phase === 'lobby';
         if (currentGame.phase === 'finished') await wipe(client);
         else { await client.query('delete from tg_trades'); await client.query('delete from tg_crafts'); await client.query('update tg_groups set mission=null'); }
         const groupCount = allowedGroupCount(b.groupCount);
         const activeProducts = chooseActiveProducts();
         await client.query('update tg_game set group_count=$1, active_products=$2::jsonb where id=1', [groupCount, JSON.stringify(activeProducts)]);
-        // 새 게임마다 재고를 초기화해 이전 게임의 자원이 누적되지 않게 한다.
-        await client.query('update tg_inventory set qty=0');
+        // 대기실에서 미리 지급한 재화는 보존한다. 그 외에는 이전 게임의 재고가 누적되지 않도록 초기화한다.
+        if (!preservePrestartGrants) await client.query('update tg_inventory set qty=0');
         await client.query('delete from tg_trades where from_group > $1 or to_group > $1', [groupCount]);
         await client.query('delete from tg_crafts where group_id > $1', [groupCount]);
         await client.query('update tg_inventory set qty=0 where group_id > $1', [groupCount]);
@@ -688,7 +738,7 @@ async function teacherAction(client, action, b) {
         }
         await grantInitialResources(client);
         await client.query(
-          "update tg_game set phase='autarky', ends_at = now() + ($1::int * interval '1 second'), production=$2, autarky_seconds=$1, trade_seconds=$3, paused=false, paused_remaining=0, announcement='', announcement_at=null where id=1",
+          "update tg_game set phase='autarky', ends_at = now() + ($1::int * interval '1 second'), production=$2, autarky_seconds=$1, trade_seconds=$3, paused=false, paused_remaining=0, next_resource_at=null, announcement='', announcement_at=null where id=1",
           [autarky, production, trade]
         );
         return json({ ok: true });
@@ -700,7 +750,7 @@ async function teacherAction(client, action, b) {
         if (rows[0].phase !== 'autarky') fail(409, '자급자족 단계에서만 무역을 열 수 있어요.');
         if (rows[0].paused) fail(409, '게임을 재개한 뒤 무역을 열어 주세요.');
         await client.query(
-          "update tg_game set phase='trade', ends_at = now() + (trade_seconds * interval '1 second'), paused_remaining=0 where id=1"
+          "update tg_game set phase='trade', ends_at = now() + (trade_seconds * interval '1 second'), paused_remaining=0, next_resource_at=now() + interval '1 minute' where id=1"
         );
         return json({ ok: true });
       });
@@ -736,20 +786,30 @@ async function teacherAction(client, action, b) {
         const game = rows[0];
         if (!['autarky', 'trade'].includes(game.phase)) fail(409, '게임 진행 중에만 재개할 수 있어요.');
         if (!game.paused) return json({ ok: true, paused: false });
-        await client.query("update tg_game set paused=false, ends_at=now() + (paused_remaining * interval '1 second'), paused_remaining=0, next_resource_at=now() + interval '1 minute' where id=1");
+        await client.query("update tg_game set paused=false, ends_at=now() + (paused_remaining * interval '1 second'), paused_remaining=0, next_resource_at=case when phase='trade' then now() + interval '1 minute' else null end where id=1");
         return json({ ok: true, paused: false });
       });
     }
     case 'grant_resource': {
       const groupId = clampInt(b.groupId, 1, MAX_GROUP_COUNT, 0);
       const item = String(b.item || '');
-      const qty = clampInt(b.qty, 1, 999, 0);
-      const game = await getGame(client);
-      if (!['lobby', 'autarky', 'trade'].includes(game.phase)) fail(409, '게임이 끝난 뒤에는 자원을 지급할 수 없어요. 새 게임을 준비해 주세요.');
-      if (groupId < 1 || groupId > game.group_count) fail(400, '현재 설정된 모둠 번호를 확인해 주세요.');
-      if (!RAW[item]) fail(400, '지급할 자원을 골라 주세요.');
-      await client.query('update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2', [groupId, item, qty]);
-      return json({ ok: true });
+      const qty = Number(b.qty);
+      if (!Number.isInteger(qty) || qty < 1 || qty > 999) fail(400, '지급 수량은 1~999 사이의 정수로 입력해 주세요.');
+      if (!RAW[item]) fail(400, '지급할 기본 재화나 달러를 골라 주세요.');
+      // 게임 상태 확인과 지급을 한 트랜잭션으로 묶어 무역 종료/초기화와 겹칠 때
+      // 잘못된 모둠에 지급되거나 지급이 누락되는 일을 줄인다.
+      return tx(client, async () => {
+        const { rows } = await client.query('select phase, group_count from tg_game where id=1 for update');
+        const game = rows[0];
+        if (!game || !['lobby', 'autarky', 'trade'].includes(game.phase)) fail(409, '게임이 끝난 뒤에는 자원을 지급할 수 없어요. 새 게임을 준비해 주세요.');
+        if (groupId < 1 || groupId > game.group_count) fail(400, '현재 설정된 모둠 번호를 확인해 주세요.');
+        const result = await client.query(
+          'update tg_inventory set qty=qty+$3 where group_id=$1 and item=$2 returning qty',
+          [groupId, item, qty]
+        );
+        if (!result.rowCount) fail(409, '해당 모둠의 창고 항목을 찾지 못했어요. 새로고침한 뒤 다시 시도해 주세요.');
+        return json({ ok: true, groupId, item, qty, total: result.rows[0].qty });
+      });
     }
     case 'set_group_count': {
       const groupCount = allowedGroupCount(b.groupCount);
@@ -784,7 +844,7 @@ async function teacherAction(client, action, b) {
         for (let i = 1; i <= MAX_GROUP_COUNT; i++) {
           await client.query('update tg_groups set code=$2, last_seen=null where id=$1', [i, randomCode()]);
         }
-        await client.query("update tg_game set phase='lobby', group_count=10, ends_at=null, paused=false, paused_remaining=0, announcement='', announcement_at=null where id=1");
+        await client.query("update tg_game set phase='lobby', group_count=10, ends_at=null, paused=false, paused_remaining=0, next_resource_at=null, announcement='', announcement_at=null where id=1");
         for (let i = 0; i < MAX_GROUP_COUNT; i++) {
           await client.query('update tg_groups set name=$3, material=$2 where id=$1', [i + 1, GROUP_MATERIAL[i], `${i + 1}모둠`]);
         }
@@ -892,10 +952,8 @@ export default async (req) => {
     }
   }
 
-  if (!process.env.DATABASE_URL) {
-    return json({ error: 'DATABASE_URL 환경변수가 설정되지 않았어요.' }, 500);
-  }
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = getSharedPool();
+  if (!pool) return json({ error: 'DATABASE_URL 환경변수가 설정되지 않았어요.' }, 500);
   let client;
   try {
     client = await pool.connect();
@@ -908,10 +966,10 @@ export default async (req) => {
     return await dispatch(client, req, route);
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status);
-    console.error(e);
-    return json({ error: '서버에 문제가 생겼어요. 잠시 뒤에 다시 해 보세요.' }, 500);
+    console.error('API request failed:', route, e?.code || '', e?.message || e);
+    return json({ error: '서버 연결이 잠시 불안정해요. 잠시 후 다시 시도해 주세요.' }, 500);
   } finally {
     if (client) client.release();
-    await pool.end().catch(() => {});
+    // 공유 Pool은 다음 요청에서도 재사용하므로 여기서 pool.end()를 호출하지 않는다.
   }
 };

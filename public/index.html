@@ -267,7 +267,7 @@ let PUBLIC_CONFIG_REQUEST_ID = 0;
 const S = {
   session: null, st: null, cfg: null, skew: 0, offline: false,
   tab: 'craft', drafts: {}, sigs: {}, shell: null, seen: null, busy: false,
-  loginRole: 'group', loginGroup: null, loginRoomCode: '기본학급', pollT: null, teacherTab: 'ops',
+  loginRole: 'group', loginGroup: null, loginRoomCode: '기본학급', pollT: null, pollPromise: null, pollFailures: 0, teacherTab: 'ops',
 };
 try { S.session = JSON.parse(sessionStorage.getItem('tg_session') || 'null'); } catch { S.session = null; }
 const saveSession = () => {
@@ -282,11 +282,40 @@ async function api(path, { method = 'GET', body } = {}) {
   if (s?.role === 'group') { h['x-group'] = String(s.group); h['x-code'] = String(s.code); }
   const roomCode = s?.roomCode || S.loginRoomCode || '';
   if (roomCode) h['x-room-code'] = encodeURIComponent(roomCode);
-  const r = await fetch('/api/' + path, { method, headers: h, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
-  let data = null;
-  try { data = await r.json(); } catch {}
-  if (!r.ok) { const e = new Error(data?.error || '요청에 실패했어요.'); e.status = r.status; throw e; }
-  return data;
+  // 상태 조회만 일시적 네트워크/서버 오류에 한해 1회 재시도한다.
+  // 제작·무역 등 변경 요청은 중복 실행을 막기 위해 자동 재시도하지 않는다.
+  const retryableRead = method === 'GET' && path === 'state';
+  const attempts = retryableRead ? 2 : 1;
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      const r = await fetch('/api/' + path, {
+        method, headers: h, body: body ? JSON.stringify(body) : undefined,
+        cache: 'no-store', signal: controller.signal,
+      });
+      let data = null;
+      try { data = await r.json(); } catch {}
+      if (!r.ok) {
+        const e = new Error(data?.error || '요청에 실패했어요.'); e.status = r.status;
+        if (retryableRead && attempt + 1 < attempts && [429, 500, 502, 503, 504].includes(r.status)) {
+          lastError = e;
+          await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+          continue;
+        }
+        throw e;
+      }
+      return data;
+    } catch (e) {
+      lastError = e.name === 'AbortError' ? new Error('서버 응답이 늦어 다시 연결하고 있어요.') : e;
+      if (!retryableRead || attempt + 1 >= attempts || (e.status && ![429, 500, 502, 503, 504].includes(e.status))) throw lastError;
+      await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw lastError || new Error('서버 연결이 불안정해요.');
 }
 
 /* ---------- 화면 조각 갱신 도구 (입력 중인 글이 지워지지 않게) ---------- */
@@ -406,8 +435,10 @@ function renderLogin() {
 async function loadPublicConfig(roomCode, redraw = true) {
   const requestId = ++PUBLIC_CONFIG_REQUEST_ID;
   const code = (roomCode || '기본학급').trim() || '기본학급';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const r = await fetch('/api/public-config', { headers: { 'x-room-code': encodeURIComponent(code) }, cache: 'no-store' });
+    const r = await fetch('/api/public-config', { headers: { 'x-room-code': encodeURIComponent(code) }, cache: 'no-store', signal: controller.signal });
     if (!r.ok || requestId !== PUBLIC_CONFIG_REQUEST_ID) return;
     const d = await r.json();
     if (requestId !== PUBLIC_CONFIG_REQUEST_ID) return;
@@ -421,6 +452,8 @@ async function loadPublicConfig(roomCode, redraw = true) {
     if ((redraw || changed) && S.shell === 'login') renderLoginBody();
   } catch {
     // 설정을 불러오지 못하면 기본값 10개 모둠 화면을 유지한다.
+  } finally {
+    clearTimeout(timeout);
   }
 }
 function renderLoginBody() {
@@ -728,7 +761,7 @@ function buildTeacherShell() {
       <div class="tgrid"><section class="card" style="margin-top:0"><h3>📊 모둠 현황</h3><div class="scroll" id="tTable"></div></section><section class="card" style="margin-top:0"><h3>📬 무역 편지함</h3><div id="tFeed"></div></section></div>
     </div>
     <div id="teacherResources" style="display:none">
-      <section class="card"><h2>🎁 모둠별 자원 지급</h2><p class="hint">게임 시작 전이나 자급자족·무역 진행 중에 선택한 모둠의 자원을 추가로 지급합니다. 이미 가진 자원에 더해지며, 다른 모둠의 자원은 바뀌지 않습니다. 게임이 끝난 뒤에는 새 게임을 준비한 후 지급할 수 있습니다.</p>
+      <section class="card"><h2>🎁 모둠별 자원 지급</h2><p class="hint">게임 시작 전이나 자급자족·무역 진행 중에도 선택한 모둠에 기본 재화 또는 달러를 추가로 지급할 수 있습니다. 이미 가진 수량에 더해지며, 다른 모둠에는 영향을 주지 않습니다. 게임이 끝난 뒤에는 새 게임을 준비해 주세요.</p>
       <div class="settings"><label>모둠<select id="grantGroup"></select></label><label>지급할 자원<select id="grantItem"></select></label><label>수량<input id="grantQty" type="number" min="1" max="999" value="5"></label><button class="btn go big" data-act="t-grant">자원 지급</button></div>
       <div id="tResourceTable" style="margin-top:18px"></div></section>
     </div>
@@ -743,8 +776,19 @@ function renderTeacher() {
   $('#teacherResources').style.display = S.teacherTab === 'resources' ? '' : 'none';
   const activeGroups = st.groups;
   const groupOptions = activeGroups.map(g => `<option value="${g.id}">${g.id}모둠</option>`).join('');
-  $('#previewGroup').innerHTML = groupOptions; $('#grantGroup').innerHTML = groupOptions;
-  $('#grantItem').innerHTML = Object.entries(S.cfg.raw).map(([k,v]) => `<option value="${k}">${v.emoji} ${esc(v.name)}</option>`).join('');
+  // 주기 조회 때 선택 목록을 무조건 다시 만들면 교사가 고른 모둠이 5초마다 초기화될 수 있다.
+  // 실제 모둠 구성이 바뀐 경우에만 옵션을 갱신하고 기존 선택을 유지한다.
+  const previewGroup = $('#previewGroup'), grantGroup = $('#grantGroup'), grantItem = $('#grantItem');
+  const setOptionsPreservingSelection = (el, signature, html) => {
+    if (el.dataset.optionsSignature === signature) return;
+    const previous = el.value;
+    el.innerHTML = html; el.dataset.optionsSignature = signature;
+    if ([...el.options].some(option => option.value === previous)) el.value = previous;
+  };
+  setOptionsPreservingSelection(previewGroup, groupOptions, groupOptions);
+  setOptionsPreservingSelection(grantGroup, groupOptions, groupOptions);
+  const itemOptions = Object.entries(S.cfg.raw).map(([k,v]) => `<option value="${k}">${v.emoji} ${esc(v.name)}</option>`).join('');
+  setOptionsPreservingSelection(grantItem, itemOptions, itemOptions);
 
   mount('tHdr', { phase, p: st.game.production }, () => {
     const ctrl = {
@@ -881,9 +925,9 @@ const ACTIONS = {
     toast(`${groupCount}개 모둠으로 시작했어요! 시작 재화와 달러 $150이 지급돼요. 진행 중에는 매 1분마다 특산 재화 3개와 다른 기본 재화 1개가 추가돼요.`, 'ok'); await poll();
   }),
   'teacher-tab': (b) => { S.teacherTab = b.dataset.tab; S.sigs = {}; renderTeacher(); },
-    't-grant': () => guarded(async () => { const groupId = Number($('#grantGroup')?.value); const item = $('#grantItem')?.value; const qty = Number($('#grantQty')?.value); await tpost('grant_resource', { groupId, item, qty }); toast(`자원을 지급했어요.`, 'ok'); await poll(); }),
+    't-grant': (button) => guarded(async () => { const groupId = Number($('#grantGroup')?.value); const item = $('#grantItem')?.value; const qty = Number($('#grantQty')?.value); if (!Number.isInteger(qty) || qty < 1 || qty > 999) throw new Error('지급 수량은 1~999 사이의 정수로 입력해 주세요.'); button.disabled = true; try { await tpost('grant_resource', { groupId, item, qty }); const group = S.st?.groups?.find(g => g.id === groupId); const itemName = S.cfg?.raw?.[item]?.name || item; toast(`${group?.name || `${groupId}모둠`}에 ${itemName} ${qty}${item === 'usd' ? '달러' : '개'}를 지급했어요.`, 'ok'); await poll(); } finally { button.disabled = false; } }),
   't-open': () => guarded(async () => {
-    if (!confirm('무역을 열까요? 추가 재료는 지급되지 않아요.')) return;
+    if (!confirm('무역을 열까요? 무역 시작 1분 뒤부터 매 1분마다 특산 재화 3개와 다른 기본 재화 1개가 지급돼요.')) return;
     await tpost('open_trade'); toast('무역을 열었어요.', 'ok'); await poll();
   }),
   't-pause': () => guarded(async () => { await tpost('pause'); toast('게임을 일시 정지했어요.'); await poll(); }),
@@ -917,24 +961,39 @@ document.addEventListener('click', (e) => {
 /* =====================================================================
    데이터 가져오기(3초마다) & 타이머
    ===================================================================== */
-async function poll() {
-  if (!S.session) return;
-  try {
-    const st = await api('state');
-    S.st = st; S.cfg = st.config;
-    S.skew = Date.parse(st.serverNow) - Date.now();
-    const wasOffline = S.offline; S.offline = false;
-    if (wasOffline) S.sigs.hdr = null;
-    if (S.session.role === 'teacher') renderTeacher(); else renderStudent();
-    tick();
-  } catch (e) {
-    if (e.status === 401) return logout(true);
-    if (!S.offline) { S.offline = true; S.sigs.hdr = null; if (S.st && S.session?.role === 'group') renderStudent(); }
-  }
+function poll() {
+  if (!S.session) return Promise.resolve();
+  // 버튼 동작·주기 조회·화면 복귀가 겹쳐도 state 요청은 한 번만 실행한다.
+  if (S.pollPromise) return S.pollPromise;
+  const sessionKey = JSON.stringify(S.session);
+  S.pollPromise = (async () => {
+    try {
+      const st = await api('state');
+      // 요청 중 사용자가 로그아웃/다른 모둠으로 전환했다면 이전 응답을 적용하지 않는다.
+      if (!S.session || JSON.stringify(S.session) !== sessionKey) return;
+      S.st = st; S.cfg = st.config;
+      S.skew = Date.parse(st.serverNow) - Date.now();
+      const wasOffline = S.offline; S.offline = false; S.pollFailures = 0;
+      if (wasOffline) S.sigs.hdr = null;
+      if (S.session.role === 'teacher') renderTeacher(); else renderStudent();
+      tick();
+    } catch (e) {
+      if (e.status === 401) return logout(true);
+      S.pollFailures = Math.min(S.pollFailures + 1, 5);
+      if (!S.offline) { S.offline = true; S.sigs.hdr = null; if (S.st && S.session?.role === 'group') renderStudent(); }
+    }
+  })().finally(() => { S.pollPromise = null; });
+  return S.pollPromise;
 }
 function schedule() {
   clearTimeout(S.pollT);
-  S.pollT = setTimeout(async () => { if (!document.hidden) await poll(); schedule(); }, 5000);
+  if (!S.session) { S.pollT = null; return; }
+  // 평소에는 5초 간격, 오류가 반복되면 최대 20초까지 간격을 늘려 서버 과부하를 피한다.
+  const delay = S.pollFailures ? Math.min(5000 * (2 ** S.pollFailures), 20000) : 5000;
+  S.pollT = setTimeout(async () => {
+    if (!document.hidden) await poll();
+    schedule();
+  }, delay);
 }
 function tick() {
   const g = S.st?.game;
@@ -947,12 +1006,12 @@ function tick() {
   });
 }
 setInterval(tick, 500);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S.session) { poll().finally(schedule); } });
 
 function startApp() {
   S.st = null; S.shell = null; S.seen = null; S.tab = 'craft'; S.drafts = {}; S.sigs = {};
   $('#app').innerHTML = '<p style="text-align:center;padding:60px 0">불러오는 중…</p>';
-  poll(); schedule();
+  poll().finally(schedule);
 }
 
 if (S.session) startApp(); else renderLogin();
